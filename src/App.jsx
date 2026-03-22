@@ -119,13 +119,19 @@ function calcPts(com,sob,fase2){if(!fase2)return com?(sob===0?8:sob===1?5:sob===
 function esPuntoMuerto(ea,fi,canjes){if(canjes.length!==1)return false;const res=aplica(fi,canjes[0].de,canjes[0].por);const sig=getCanjes(ea,res);if(sig.length!==1)return false;return[...aplica(res,sig[0].de,sig[0].por)].sort().join()===[...fi].sort().join();}
 
 function nuevoG(j1,j2,eqIds,modo='completa'){
-  const ea=EQ.filter(e=>eqIds.includes(e.id));
   const pool=shuf(tarjetasParaModo(modo));
   const n=pool.length,pila=Math.floor(n/4),extra=n%4;
   const mons=[];let idx=0;
   for(let i=0;i<4;i++){const sz=pila+(i<extra?1:0);mons.push(pool.slice(idx,idx+sz));idx+=sz;}
-  return {j1,j2,ea,modo,mons,turno:0,f:[[],[]],pts:[0,0],fase:1,monVacios:0,
-    estado:'elegir_j1',proxAccion:[null,null],turnosPerdidos:[0,0],log:[],fin:false};
+  return {
+    j1,j2,
+    eqIds,   // solo los IDs, no los objetos completos
+    modo,
+    mons,
+    turno:0,f:[[],[]],pts:[0,0],fase:1,monVacios:0,
+    estado:'elegir_j1',proxAccion:[null,null],turnosPerdidos:[0,0],
+    log:[],fin:false
+  };
 }
 
 // ── COMPONENTES VISUALES ──
@@ -376,12 +382,13 @@ function Setup({online,onStart,onBack}){
 // ── JUEGO ──
 function Game({j1,j2,eqIds,modo,miRol,salaId,estadoInicial,onBack}){
   const online=!!salaId;
-
-  // Estado local (hotseat) o remoto (online)
   const [G,setGLocal]=useState(()=>estadoInicial||nuevoG(j1,j2,eqIds,modo));
   const [modalCanje,setModalCanje]=useState(false);
   const [canjesDisp,setCanjesDisp]=useState([]);
   const ignorarRef=useRef(false);
+
+  // Reconstruir ea desde los IDs (no se guarda el objeto completo en Firebase)
+  const ea = EQ.filter(e=>(G.eqIds||eqIds||[]).includes(e.id));
 
   // Online: sincronizar con Firebase
   useEffect(()=>{
@@ -417,7 +424,7 @@ function Game({j1,j2,eqIds,modo,miRol,salaId,estadoInicial,onBack}){
   const esMiTurno = !online || miRol===G.turno ||
     (G.estado==='sacar' && miRol!==(G.turno)) ; // quien saca es el oponente
 
-  const canjesAhora=(G.estado==='canje'||G.estado==='post_canje')?getCanjes(G.ea,G.f[t]):[];
+  const canjesAhora=(G.estado==='canje'||G.estado==='post_canje')?getCanjes(ea,G.f[t]):[];
   const objAhora=G.estado==='post_canje'?getObjetivos(G.mons,G.f[t]):[];
 
   const elegirFicha=color=>{
@@ -453,13 +460,14 @@ function Game({j1,j2,eqIds,modo,miRol,salaId,estadoInicial,onBack}){
 
   const avanzarTurno=(n)=>{
     const ji=n.turno,fi=n.f[ji],otro=1-ji;
+    const eaLocal=EQ.filter(e=>(n.eqIds||eqIds||[]).includes(e.id));
     if(fi.length===0){n.proxAccion[ji]='elegir';}
     else{
-      const cjSig=getCanjes(n.ea,fi);
+      const cjSig=getCanjes(eaLocal,fi);
       if(cjSig.length===0){
         n.log.push({tipo:'info',txt:`⚠ ${nom(ji)} sin canjes — pierde un turno`});
         n.turnosPerdidos[ji]=1;n.proxAccion[ji]='elegir';
-      } else if(esPuntoMuerto(n.ea,fi,cjSig)){
+      } else if(esPuntoMuerto(eaLocal,fi,cjSig)){
         n.log.push({tipo:'info',txt:`⚠ ${nom(ji)} en punto muerto — canje obligado`});
         n.proxAccion[ji]='elegir';
       } else {n.proxAccion[ji]=null;}
@@ -559,7 +567,7 @@ function Game({j1,j2,eqIds,modo,miRol,salaId,estadoInicial,onBack}){
         <div style={card}>
           <div style={{fontSize:9,fontWeight:700,letterSpacing:1,textTransform:'uppercase',color:'#7a7570',marginBottom:8}}>Equivalencias activas</div>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
-            {G.ea.map(eq=>(
+            {ea.map(eq=>(
               <div key={eq.id} style={{background:'#fff5f5',border:'1.5px solid #c0392b',borderRadius:8,padding:'8px 10px'}}>
                 <div style={{fontWeight:800,fontSize:14,color:'#c0392b',marginBottom:6,paddingBottom:4,borderBottom:'1px solid #fdd'}}>T. {eq.id}</div>
                 {eq.c.map((c,i)=>(
