@@ -422,7 +422,7 @@ function Setup({online,onStart,onBack}){
 // ── JUEGO ──
 function Game({j1,j2,eqIds,modo,miRol,salaId,estadoInicial,onBack}){
   const online=!!salaId;
-  const [G,setGLocal]=useState(()=>estadoInicial||nuevoG(j1,j2,eqIds,modo));
+  const [G,setGLocal]=useState(()=>normalizarG(estadoInicial)||nuevoG(j1,j2,eqIds,modo));
   const [modalCanje,setModalCanje]=useState(false);
   const [canjesDisp,setCanjesDisp]=useState([]);
   const ignorarRef=useRef(false);
@@ -432,6 +432,9 @@ function Game({j1,j2,eqIds,modo,miRol,salaId,estadoInicial,onBack}){
   const gf0 = Array.isArray(gf[0]) ? gf[0] : Object.values(gf[0]||{});
   const gf1 = Array.isArray(gf[1]) ? gf[1] : Object.values(gf[1]||{});
   const gfSafe = [gf0, gf1];
+
+  const gmons = Array.isArray(G.mons) ? G.mons.map(m=>Array.isArray(m)?m:Object.values(m||{})) : Object.values(G.mons||{}).map(m=>Array.isArray(m)?m:Object.values(m||{}));
+  const glog = Array.isArray(G.log) ? G.log : Object.values(G.log||{});
 
   const ea = EQ.filter(e=>(G.eqIds||eqIds||[]).includes(e.id));
 
@@ -470,7 +473,7 @@ function Game({j1,j2,eqIds,modo,miRol,salaId,estadoInicial,onBack}){
     (G.estado==='sacar' && miRol!==(G.turno)) ; // quien saca es el oponente
 
   const canjesAhora=(G.estado==='canje'||G.estado==='post_canje')?getCanjes(ea,gfSafe[t]):[];
-  const objAhora=G.estado==='post_canje'?getObjetivos(G.mons,gfSafe[t]):[];
+  const objAhora=G.estado==='post_canje'?getObjetivos(gmons,gfSafe[t]):[];
 
   const elegirFicha=color=>{
     if(online&&miRol!==G.turno)return;
@@ -630,7 +633,7 @@ function Game({j1,j2,eqIds,modo,miRol,salaId,estadoInicial,onBack}){
         <div style={card}>
           <div style={{fontSize:9,fontWeight:700,letterSpacing:1,textTransform:'uppercase',color:'#7a7570',marginBottom:8}}>Tarjetas objetivo</div>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6}}>
-            {G.mons.map((m,i)=>(
+            {gmons.map((m,i)=>(
               <div key={i} style={{background:'#f8f8f8',border:`1.5px solid ${m.length===0?'#e0dbd6':'#bbb'}`,borderRadius:7,padding:'7px 8px',opacity:m.length===0?0.5:1}}>
                 <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:5}}>
                   <span style={{fontSize:9,color:'#999'}}>Pila {i+1}</span>
@@ -726,9 +729,9 @@ function Game({j1,j2,eqIds,modo,miRol,salaId,estadoInicial,onBack}){
 
         <div style={card}>
           <div style={{fontSize:9,fontWeight:700,letterSpacing:1,textTransform:'uppercase',color:'#7a7570',marginBottom:6}}>Historial</div>
-          {G.log.length===0
+          {(!glog||glog.length===0)
             ?<div style={{fontSize:11,color:'#bbb',fontStyle:'italic'}}>Sin movimientos aún.</div>
-            :G.log.slice(-14).reverse().map((e,i)=>{
+            :glog.slice(-14).reverse().map((e,i)=>{
               const row={padding:'4px 0',borderBottom:'1px solid #f0ede8',display:'flex',alignItems:'center',gap:4,flexWrap:'wrap'};
               if(typeof e==='string')return<div key={i} style={{...row,fontSize:11,color:'#555'}}>{e}</div>;
               if(e.tipo==='info')return<div key={i} style={{...row,fontSize:11,color:'#e67e22'}}>{e.txt}</div>;
@@ -766,7 +769,7 @@ function Game({j1,j2,eqIds,modo,miRol,salaId,estadoInicial,onBack}){
             <div style={{background:'#f8f8f8',border:'1.5px solid #e0dbd6',borderRadius:8,padding:'8px 10px',marginBottom:12}}>
               <div style={{fontSize:9,fontWeight:700,letterSpacing:1,textTransform:'uppercase',color:'#7a7570',marginBottom:5}}>Tarjetas objetivo</div>
               <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
-                {G.mons.filter(m=>m.length>0).map((m,i)=>(
+                {gmons.filter(m=>m.length>0).map((m,i)=>(
                   <div key={i} style={{display:'flex',flexDirection:'column',alignItems:'center',gap:3}}>
                     <TObj t={m[m.length-1]} grande/>
                     <span style={{fontSize:9,fontWeight:700,color:m.length<=3?'#c0392b':'#999'}}>{m.length}</span>
