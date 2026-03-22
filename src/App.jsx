@@ -232,8 +232,9 @@ function Espera({codigo,miNombre,miRol,eqIds,modo,onStart,onBack}){
     const salaRef=ref(db,`salas/${codigo}`);
     onValue(salaRef,(snap)=>{
       const s=snap.val();
+      if(!s)return;
       setSala(s);
-      if(s?.estado==='jugando'){
+      if(s.estado==='jugando'&&s.gameState){
         onStart(s.j1,s.j2,s.gameState);
       }
     });
@@ -242,11 +243,12 @@ function Espera({codigo,miNombre,miRol,eqIds,modo,onStart,onBack}){
 
   const iniciarPartida=()=>{
     if(!sala?.j2)return;
-    const g=nuevoG(sala.j1,sala.j2,eqIds,modo);
+    // Usar eqIds y modo guardados en Firebase (los puso J1)
+    const ids=eqIds||sala.eqIds;
+    const m=modo||sala.modo||'completa';
+    const g=nuevoG(sala.j1,sala.j2,ids,m);
     set(ref(db,`salas/${codigo}/gameState`),g);
     set(ref(db,`salas/${codigo}/estado`),'jugando');
-    set(ref(db,`salas/${codigo}/eqIds`),eqIds);
-    set(ref(db,`salas/${codigo}/modo`),modo);
   };
 
   return(
@@ -747,12 +749,23 @@ export default function App(){
   // Online
   if(pant==='lobby') return(
     <Lobby
-      onJoin={(cod,nombre,rol)=>{setData(d=>({...d,codigo:cod,miNombre:nombre,miRol:rol}));setPant('setup-online');}}
+      onJoin={(cod,nombre,rol)=>{
+        setData({codigo:cod,miNombre:nombre,miRol:rol,sel:null,modo:null,j1:null,j2:null,gs:null});
+        // J1 configura equivalencias, J2 va directo a esperar
+        if(rol===0) setPant('setup-online');
+        else setPant('espera');
+      }}
       onBack={()=>setPant('menu')}/>
   );
   if(pant==='setup-online') return(
     <Setup online={true}
-      onStart={(j1,j2,sel,modo)=>{setData(d=>({...d,sel,modo}));setPant('espera');}}
+      onStart={(j1,j2,sel,modo)=>{
+        // Guardar en Firebase para que J2 los tenga
+        set(ref(db,`salas/${data.codigo}/eqIds`),sel);
+        set(ref(db,`salas/${data.codigo}/modo`),modo);
+        setData(d=>({...d,sel,modo}));
+        setPant('espera');
+      }}
       onBack={()=>setPant('lobby')}/>
   );
   if(pant==='espera'&&data) return(
