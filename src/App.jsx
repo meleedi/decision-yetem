@@ -118,6 +118,46 @@ function getObjetivos(mons,fi){const r=[];const v=new Set();mons.forEach(m=>{if(
 function calcPts(com,sob,fase2){if(!fase2)return com?(sob===0?8:sob===1?5:sob===2?3:2):(sob===0?5:sob===1?3:sob===2?2:1);return com?(sob===0?12:sob===1?8:sob===2?5:3):(sob===0?8:sob===1?5:sob===2?3:2);}
 function esPuntoMuerto(ea,fi,canjes){if(canjes.length!==1)return false;const res=aplica(fi,canjes[0].de,canjes[0].por);const sig=getCanjes(ea,res);if(sig.length!==1)return false;return[...aplica(res,sig[0].de,sig[0].por)].sort().join()===[...fi].sort().join();}
 
+// Firebase convierte arrays en objetos — esta función los restaura
+function normalizarG(g){
+  if(!g)return g;
+  const n={...g};
+  // f: [[],[]] puede venir como {"0":[],"1":[]}
+  if(n.f&&!Array.isArray(n.f)) n.f=Object.values(n.f);
+  if(Array.isArray(n.f)){
+    n.f=n.f.map(fi=>Array.isArray(fi)?fi:Object.values(fi||{}));
+  }
+  // mons: array de arrays
+  if(n.mons&&!Array.isArray(n.mons)) n.mons=Object.values(n.mons);
+  if(Array.isArray(n.mons)){
+    n.mons=n.mons.map(m=>{
+      if(!Array.isArray(m)) m=Object.values(m||{});
+      return m.map(t=>({
+        ...t,
+        f:Array.isArray(t.f)?t.f:Object.values(t.f||{}),
+      }));
+    });
+  }
+  // pts y proxAccion y turnosPerdidos
+  if(n.pts&&!Array.isArray(n.pts)) n.pts=Object.values(n.pts);
+  if(n.proxAccion&&!Array.isArray(n.proxAccion)) n.proxAccion=Object.values(n.proxAccion);
+  if(n.turnosPerdidos&&!Array.isArray(n.turnosPerdidos)) n.turnosPerdidos=Object.values(n.turnosPerdidos);
+  // eqIds
+  if(n.eqIds&&!Array.isArray(n.eqIds)) n.eqIds=Object.values(n.eqIds);
+  // log
+  if(n.log&&!Array.isArray(n.log)) n.log=Object.values(n.log||{});
+  if(Array.isArray(n.log)){
+    n.log=n.log.map(e=>{
+      if(typeof e!=='object'||!e)return e;
+      const ne={...e};
+      if(ne.de&&!Array.isArray(ne.de)) ne.de=Object.values(ne.de);
+      if(ne.por&&!Array.isArray(ne.por)) ne.por=Object.values(ne.por);
+      return ne;
+    });
+  }
+  return n;
+}
+
 function nuevoG(j1,j2,eqIds,modo='completa'){
   const pool=shuf(tarjetasParaModo(modo));
   const n=pool.length,pila=Math.floor(n/4),extra=n%4;
@@ -246,7 +286,7 @@ function Espera({codigo,miNombre,miRol,eqIds,modo,onBack}){
       if(s.eqIds) setEqIdsLocal(s.eqIds);
       if(s.modo)  setModoLocal(s.modo);
       if(s.estado==='jugando'&&s.gameState){
-        setGameState(s.gameState);
+        setGameState(normalizarG(s.gameState));
       }
     });
     return()=>off(ref(db,`salas/${codigo}`));
@@ -397,7 +437,7 @@ function Game({j1,j2,eqIds,modo,miRol,salaId,estadoInicial,onBack}){
     onValue(gameRef,(snap)=>{
       if(ignorarRef.current)return;
       const val=snap.val();
-      if(val)setGLocal(val);
+      if(val)setGLocal(normalizarG(val));
     });
     return()=>off(ref(db,`salas/${salaId}/gameState`));
   },[salaId,online]);
