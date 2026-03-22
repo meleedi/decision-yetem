@@ -225,8 +225,11 @@ function Lobby({onJoin,onBack}){
 }
 
 // ── SALA DE ESPERA ──
-function Espera({codigo,miNombre,miRol,eqIds,modo,onStart,onBack}){
+function Espera({codigo,miNombre,miRol,eqIds,modo,onBack}){
   const [sala,setSala]=useState(null);
+  const [gameState,setGameState]=useState(null);
+  const [eqIdsLocal,setEqIdsLocal]=useState(eqIds||null);
+  const [modoLocal,setModoLocal]=useState(modo||null);
 
   useEffect(()=>{
     const salaRef=ref(db,`salas/${codigo}`);
@@ -234,22 +237,32 @@ function Espera({codigo,miNombre,miRol,eqIds,modo,onStart,onBack}){
       const s=snap.val();
       if(!s)return;
       setSala(s);
+      if(s.eqIds) setEqIdsLocal(s.eqIds);
+      if(s.modo)  setModoLocal(s.modo);
       if(s.estado==='jugando'&&s.gameState){
-        onStart(s.j1,s.j2,s.gameState);
+        setGameState(s.gameState);
       }
     });
     return()=>off(ref(db,`salas/${codigo}`));
   },[codigo]);
 
   const iniciarPartida=()=>{
-    if(!sala?.j2)return;
-    // Usar eqIds y modo guardados en Firebase (los puso J1)
-    const ids=eqIds||sala.eqIds;
-    const m=modo||sala.modo||'completa';
-    const g=nuevoG(sala.j1,sala.j2,ids,m);
+    if(!sala?.j2||!eqIdsLocal)return;
+    const g=nuevoG(sala.j1,sala.j2,eqIdsLocal,modoLocal||'completa');
     set(ref(db,`salas/${codigo}/gameState`),g);
     set(ref(db,`salas/${codigo}/estado`),'jugando');
   };
+
+  // Cuando Firebase confirma que está jugando, mostrar el juego
+  if(gameState&&sala){
+    return(
+      <Game
+        j1={sala.j1} j2={sala.j2}
+        eqIds={eqIdsLocal||[]} modo={modoLocal||'completa'}
+        miRol={miRol} salaId={codigo} estadoInicial={gameState}
+        onBack={onBack}/>
+    );
+  }
 
   return(
     <div style={{minHeight:'100vh',background:'#f0ede8',fontFamily:'system-ui,sans-serif',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:24}}>
@@ -772,14 +785,9 @@ export default function App(){
     <Espera
       codigo={data.codigo} miNombre={data.miNombre} miRol={data.miRol}
       eqIds={data.sel} modo={data.modo}
-      onStart={(j1,j2,gs)=>{setData(d=>({...d,j1,j2,gs}));setPant('game-online');}}
       onBack={()=>setPant('menu')}/>
   );
-  if(pant==='game-online'&&data) return(
-    <Game j1={data.j1} j2={data.j2} eqIds={data.sel} modo={data.modo}
-      miRol={data.miRol} salaId={data.codigo} estadoInicial={data.gs}
-      onBack={()=>setPant('menu')}/>
-  );
+  // game-online ya no se usa — Espera navega directamente al Game
 
   // Menú principal
   return(
