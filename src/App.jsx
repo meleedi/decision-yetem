@@ -427,7 +427,12 @@ function Game({j1,j2,eqIds,modo,miRol,salaId,estadoInicial,onBack}){
   const [canjesDisp,setCanjesDisp]=useState([]);
   const ignorarRef=useRef(false);
 
-  // Reconstruir ea desde los IDs (no se guarda el objeto completo en Firebase)
+  // Normalizar G.f siempre antes de renderizar
+  const gf = Array.isArray(G.f) ? G.f : Object.values(G.f||{'0':[],'1':[]});
+  const gf0 = Array.isArray(gf[0]) ? gf[0] : Object.values(gf[0]||{});
+  const gf1 = Array.isArray(gf[1]) ? gf[1] : Object.values(gf[1]||{});
+  const gfSafe = [gf0, gf1];
+
   const ea = EQ.filter(e=>(G.eqIds||eqIds||[]).includes(e.id));
 
   // Online: sincronizar con Firebase
@@ -444,7 +449,7 @@ function Game({j1,j2,eqIds,modo,miRol,salaId,estadoInicial,onBack}){
 
   const setG=(fn)=>{
     setGLocal(prev=>{
-      const n=JSON.parse(JSON.stringify(prev));
+      const n=normalizarG(JSON.parse(JSON.stringify(prev)));
       fn(n);
       if(online){
         ignorarRef.current=true;
@@ -464,8 +469,8 @@ function Game({j1,j2,eqIds,modo,miRol,salaId,estadoInicial,onBack}){
   const esMiTurno = !online || miRol===G.turno ||
     (G.estado==='sacar' && miRol!==(G.turno)) ; // quien saca es el oponente
 
-  const canjesAhora=(G.estado==='canje'||G.estado==='post_canje')?getCanjes(ea,G.f[t]):[];
-  const objAhora=G.estado==='post_canje'?getObjetivos(G.mons,G.f[t]):[];
+  const canjesAhora=(G.estado==='canje'||G.estado==='post_canje')?getCanjes(ea,gfSafe[t]):[];
+  const objAhora=G.estado==='post_canje'?getObjetivos(G.mons,gfSafe[t]):[];
 
   const elegirFicha=color=>{
     if(online&&miRol!==G.turno)return;
@@ -641,10 +646,10 @@ function Game({j1,j2,eqIds,modo,miRol,salaId,estadoInicial,onBack}){
           {[0,1].map(ji=>(
             <div key={ji} style={{background:G.turno===ji&&!G.fin?'#fff8f7':'white',border:`2px solid ${G.turno===ji&&!G.fin?'#c0392b':'#d4cfc9'}`,borderRadius:10,padding:'10px 12px'}}>
               <div style={{fontSize:9,fontWeight:700,textTransform:'uppercase',letterSpacing:1,color:G.turno===ji&&!G.fin?'#c0392b':'#7a7570',marginBottom:6}}>
-                {nom(ji)}{online&&miRol===ji?' ·  vos':''} · {G.f[ji].length}
+                {nom(ji)}{online&&miRol===ji?' ·  vos':''} · {gfSafe[ji].length}
               </div>
               <div style={{display:'flex',flexWrap:'wrap',gap:5,minHeight:26,alignItems:'center'}}>
-                {G.f[ji].length===0?<span style={{fontSize:10,color:'#bbb',fontStyle:'italic'}}>Sin fichas</span>:G.f[ji].map((c,k)=><Dot key={k} color={c} size={24}/>)}
+                {gfSafe[ji].length===0?<span style={{fontSize:10,color:'#bbb',fontStyle:'italic'}}>Sin fichas</span>:gfSafe[ji].map((c,k)=><Dot key={k} color={c} size={24}/>)}
               </div>
             </div>
           ))}
@@ -661,9 +666,9 @@ function Game({j1,j2,eqIds,modo,miRol,salaId,estadoInicial,onBack}){
             {G.estado==='sacar'&&(
               <div>
                 <div style={{fontSize:12,color:'#c0392b',marginBottom:8,fontWeight:600}}>
-                  {nom(t)} tiene {G.f[t].length} fichas. Elegí cuál sacarle:
+                  {nom(t)} tiene {gfSafe[t].length} fichas. Elegí cuál sacarle:
                 </div>
-                {G.f[t].map((c,i)=>(
+                {gfSafe[t].map((c,i)=>(
                   <button key={i} onClick={()=>sacarFicha(i)} style={{...btn(),display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
                     <Dot color={c} size={18}/> Sacar {CNAME[c]}
                   </button>
@@ -756,7 +761,7 @@ function Game({j1,j2,eqIds,modo,miRol,salaId,estadoInicial,onBack}){
             <div style={{fontWeight:800,fontSize:15,color:'#c0392b',marginBottom:10}}>ELEGIR CANJE</div>
             <div style={{background:'#f8f8f8',border:'1.5px solid #e0dbd6',borderRadius:8,padding:'8px 10px',marginBottom:10}}>
               <div style={{fontSize:9,fontWeight:700,letterSpacing:1,textTransform:'uppercase',color:'#7a7570',marginBottom:5}}>Tus fichas</div>
-              <div style={{display:'flex',flexWrap:'wrap',gap:5}}>{G.f[t].map((c,k)=><Dot key={k} color={c} size={26}/>)}</div>
+              <div style={{display:'flex',flexWrap:'wrap',gap:5}}>{gfSafe[t].map((c,k)=><Dot key={k} color={c} size={26}/>)}</div>
             </div>
             <div style={{background:'#f8f8f8',border:'1.5px solid #e0dbd6',borderRadius:8,padding:'8px 10px',marginBottom:12}}>
               <div style={{fontSize:9,fontWeight:700,letterSpacing:1,textTransform:'uppercase',color:'#7a7570',marginBottom:5}}>Tarjetas objetivo</div>
