@@ -869,7 +869,7 @@ function Game({j1,j2,eqIds,modo,miRol,salaId,estadoInicial,onBack}){
         <div style={{marginBottom:8}}/>
         {!G.fin&&!bloqueado&&<><PanelAcciones/><div style={{marginBottom:8}}/></>}
         <PanelHistorial maxItems={14}/>
-        {G.fin&&<><div style={{marginBottom:8}/><FinPartida/></>}
+        {G.fin&&<><div style={{marginBottom:8}}/><FinPartida/></>}
       </div>
       <ModalCanje/>
     </div>
