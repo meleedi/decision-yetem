@@ -177,7 +177,7 @@ function nuevoG(j1,j2,eqIds,modo='completa'){
 // ── COMPONENTES VISUALES ──
 const Dot=({color,size=14})=><div style={{width:size,height:size,borderRadius:'50%',background:CHX[color],flexShrink:0,border:'1px solid rgba(0,0,0,0.2)'}}/>;
 const FRow=({arr,size=11})=><div style={{display:'flex',gap:2,alignItems:'center',flexWrap:'wrap'}}>{arr.map((c,i)=><Dot key={i} color={c} size={size}/>)}</div>;
-const TObj=({t,grande})=>{const sz=grande?13:11;return(<div style={{display:'inline-flex',alignItems:'center',gap:4,background:t.com?'#7d3c00':'#fafafa',border:`1.5px solid ${t.com?'#e67e22':'#ccc'}`,borderRadius:6,padding:'3px 7px',flexShrink:0}}><FRow arr={t.f} size={sz}/>{t.com&&<span style={{fontSize:10,color:'#f0a500'}}>★</span>}</div>);};
+const TObj=({t,grande})=>{const sz=grande?14:12;return(<div style={{display:'inline-flex',alignItems:'center',gap:5,background:t.com?'#888':'#fafafa',border:`1.5px solid ${t.com?'#666':'#ddd'}`,borderRadius:7,padding:'4px 8px',flexShrink:0}}><FRow arr={t.f} size={sz}/>{t.com&&<span style={{fontSize:11,color:'#fff',fontWeight:700}}>★</span>}</div>);};
 
 function AutoPass({onMount,msg}){
   useEffect(()=>{
@@ -286,7 +286,8 @@ function Espera({codigo,miNombre,miRol,eqIds,modo,onBack}){
       if(s.eqIds) setEqIdsLocal(s.eqIds);
       if(s.modo)  setModoLocal(s.modo);
       if(s.estado==='jugando'&&s.gameState){
-        setGameState(normalizarG(s.gameState));
+        const g=s.gameState._json?JSON.parse(s.gameState._json):normalizarG(s.gameState);
+        setGameState(g);
       }
     });
     return()=>off(ref(db,`salas/${codigo}`));
@@ -295,7 +296,7 @@ function Espera({codigo,miNombre,miRol,eqIds,modo,onBack}){
   const iniciarPartida=()=>{
     if(!sala?.j2||!eqIdsLocal)return;
     const g=nuevoG(sala.j1,sala.j2,eqIdsLocal,modoLocal||'completa');
-    set(ref(db,`salas/${codigo}/gameState`),g);
+    set(ref(db,`salas/${codigo}/gameState`),{_json:JSON.stringify(g)});
     set(ref(db,`salas/${codigo}/estado`),'jugando');
   };
 
@@ -445,7 +446,10 @@ function Game({j1,j2,eqIds,modo,miRol,salaId,estadoInicial,onBack}){
     onValue(gameRef,(snap)=>{
       if(ignorarRef.current)return;
       const val=snap.val();
-      if(val)setGLocal(normalizarG(val));
+      if(!val)return;
+      // Deserializar desde string JSON
+      const g=val._json?JSON.parse(val._json):normalizarG(val);
+      setGLocal(g);
     });
     return()=>off(ref(db,`salas/${salaId}/gameState`));
   },[salaId,online]);
@@ -456,7 +460,8 @@ function Game({j1,j2,eqIds,modo,miRol,salaId,estadoInicial,onBack}){
       fn(n);
       if(online){
         ignorarRef.current=true;
-        set(ref(db,`salas/${salaId}/gameState`),n).then(()=>{
+        // Guardar como string para que Firebase no convierta arrays en objetos
+        set(ref(db,`salas/${salaId}/gameState`),{_json:JSON.stringify(n)}).then(()=>{
           setTimeout(()=>{ignorarRef.current=false;},500);
         });
       }
@@ -590,210 +595,283 @@ function Game({j1,j2,eqIds,modo,miRol,salaId,estadoInicial,onBack}){
     (G.estado!=='sacar'&&miRol!==G.turno)
   );
 
-  return(
-    <div style={{minHeight:'100vh',background:'#f0ede8',fontFamily:'system-ui,sans-serif',display:'flex',flexDirection:'column'}}>
-      <div style={{background:'#1a1a2e',padding:'8px 14px',display:'flex',alignItems:'center',justifyContent:'space-between',position:'sticky',top:0,zIndex:10}}>
-        <span style={{fontWeight:800,fontSize:16,color:'#e94560',letterSpacing:3}}>DECISIÓN</span>
-        <div style={{display:'flex',gap:16,alignItems:'center'}}>
-          {[0,1].map(ji=>(
-            <div key={ji} style={{textAlign:'center'}}>
-              <div style={{fontSize:8,letterSpacing:1,textTransform:'uppercase',color:G.turno===ji?'#f5a623':'#8892a4'}}>
-                {nom(ji)}{online&&miRol===ji?' (vos)':''}
+  // Detectar PC vs móvil
+  const isPC = window.innerWidth >= 900;
+
+  // ── SUBCOMPONENTES COMPARTIDOS ──
+  const PanelEquivalencias = ({eqSize=13}) => (
+    <div style={{background:'white',borderRadius:10,padding:'10px 12px',border:'1.5px solid #e8e3de',marginBottom:isPC?0:8}}>
+      <div style={{fontSize:8,fontWeight:700,letterSpacing:1.5,textTransform:'uppercase',color:'#aaa',marginBottom:8}}>Equivalencias</div>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+        {ea.map(eq=>(
+          <div key={eq.id} style={{background:'#fff5f5',border:'1.5px solid #e8b4b0',borderRadius:9,padding:'8px 10px'}}>
+            <div style={{fontWeight:800,fontSize:13,color:'#c0392b',marginBottom:6,paddingBottom:4,borderBottom:'1.5px solid #fdd'}}>T. {eq.id}</div>
+            {eq.c.map((c,i)=>(
+              <div key={i} style={{display:'flex',alignItems:'center',gap:5,marginBottom:5}}>
+                <FRow arr={c.d} size={eqSize}/>
+                <span style={{fontSize:10,color:'#ccc',flexShrink:0}}>⇌</span>
+                <FRow arr={c.p} size={eqSize}/>
               </div>
-              <div style={{fontWeight:800,fontSize:20,color:G.turno===ji?'#f5a623':'#eaeaea',lineHeight:1}}>{G.pts[ji]}</div>
-            </div>
-          ))}
-        </div>
-        <div style={{display:'flex',gap:6,alignItems:'center'}}>
-          {G.fase===2&&<span style={{fontSize:9,background:'#e67e22',color:'white',padding:'2px 5px',borderRadius:4}}>FASE 2</span>}
-          {online&&salaId&&<span style={{fontSize:9,color:'#8892a4',letterSpacing:1}}>{salaId}</span>}
-          <button onClick={onBack} style={{padding:'4px 9px',background:'transparent',border:'1px solid rgba(255,255,255,0.2)',borderRadius:5,color:'#8892a4',fontSize:10,cursor:'pointer'}}>Menú</button>
-        </div>
+            ))}
+          </div>
+        ))}
       </div>
+    </div>
+  );
 
-      <div style={{flex:1,overflowY:'auto',padding:10}}>
-        <div style={card}>
-          <div style={{fontSize:9,fontWeight:700,letterSpacing:1,textTransform:'uppercase',color:'#7a7570',marginBottom:8}}>Equivalencias activas</div>
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
-            {ea.map(eq=>(
-              <div key={eq.id} style={{background:'#fff5f5',border:'1.5px solid #c0392b',borderRadius:8,padding:'8px 10px'}}>
-                <div style={{fontWeight:800,fontSize:14,color:'#c0392b',marginBottom:6,paddingBottom:4,borderBottom:'1px solid #fdd'}}>T. {eq.id}</div>
-                {eq.c.map((c,i)=>(
-                  <div key={i} style={{display:'flex',alignItems:'center',gap:5,marginBottom:5}}>
-                    <FRow arr={c.d} size={13}/>
-                    <span style={{fontSize:10,color:'#bbb',flexShrink:0}}>⇌</span>
-                    <FRow arr={c.p} size={13}/>
-                  </div>
-                ))}
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div style={card}>
-          <div style={{fontSize:9,fontWeight:700,letterSpacing:1,textTransform:'uppercase',color:'#7a7570',marginBottom:8}}>Tarjetas objetivo</div>
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6}}>
-            {gmons.map((m,i)=>(
-              <div key={i} style={{background:'#f8f8f8',border:`1.5px solid ${m.length===0?'#e0dbd6':'#bbb'}`,borderRadius:7,padding:'7px 8px',opacity:m.length===0?0.5:1}}>
-                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:5}}>
-                  <span style={{fontSize:9,color:'#999'}}>Pila {i+1}</span>
-                  <span style={{fontSize:14,fontWeight:800,color:m.length===0?'#bbb':m.length<=3?'#c0392b':'#1c1c1c',lineHeight:1}}>{m.length}</span>
-                </div>
-                {m.length>0?<TObj t={m[m.length-1]}/>:<div style={{fontSize:10,color:'#bbb',fontStyle:'italic'}}>Vacía</div>}
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:8}}>
-          {[0,1].map(ji=>(
-            <div key={ji} style={{background:G.turno===ji&&!G.fin?'#fff8f7':'white',border:`2px solid ${G.turno===ji&&!G.fin?'#c0392b':'#d4cfc9'}`,borderRadius:10,padding:'10px 12px'}}>
-              <div style={{fontSize:9,fontWeight:700,textTransform:'uppercase',letterSpacing:1,color:G.turno===ji&&!G.fin?'#c0392b':'#7a7570',marginBottom:6}}>
-                {nom(ji)}{online&&miRol===ji?' ·  vos':''} · {gfSafe[ji].length}
-              </div>
-              <div style={{display:'flex',flexWrap:'wrap',gap:5,minHeight:26,alignItems:'center'}}>
-                {gfSafe[ji].length===0?<span style={{fontSize:10,color:'#bbb',fontStyle:'italic'}}>Sin fichas</span>:gfSafe[ji].map((c,k)=><Dot key={k} color={c} size={24}/>)}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {descTurno()&&(
-          <div style={{background:'#1a1a2e',borderRadius:8,padding:'10px 14px',marginBottom:8,borderLeft:`4px solid ${bloqueado?'#555':'#c0392b'}`}}>
-            <div style={{color:bloqueado?'#8892a4':'white',fontSize:13,lineHeight:1.5,fontWeight:500}}>{descTurno()}</div>
-          </div>
-        )}
-
-        {!G.fin&&!bloqueado&&(
-          <div style={card}>
-            {G.estado==='sacar'&&(
-              <div>
-                <div style={{fontSize:12,color:'#c0392b',marginBottom:8,fontWeight:600}}>
-                  {nom(t)} tiene {gfSafe[t].length} fichas. Elegí cuál sacarle:
-                </div>
-                {gfSafe[t].map((c,i)=>(
-                  <button key={i} onClick={()=>sacarFicha(i)} style={{...btn(),display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
-                    <Dot color={c} size={18}/> Sacar {CNAME[c]}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {(G.estado==='elegir_j1'||G.estado==='elegir_j2'||G.estado==='elegir')&&(
-              <div>
-                <div style={{fontSize:11,color:'#7a7570',marginBottom:8}}>Elegí una ficha:</div>
-                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6}}>
-                  {COLS.map(col=>(
-                    <button key={col} onClick={()=>elegirFicha(col)} style={{...btn(),display:'flex',alignItems:'center',gap:8}}>
-                      <Dot color={col} size={18}/> {CNAME[col]}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {G.estado==='canje'&&(
-              canjesAhora.length>0
-                ?<button style={btn('pri')} onClick={()=>{setCanjesDisp(canjesAhora);setModalCanje(true);}}>
-                  ⇄ Hacer un canje ({canjesAhora.length} opción{canjesAhora.length>1?'es':''})
-                </button>
-                :<AutoPass onMount={terminarTurno} msg={`Sin canjes posibles — turno automático`}/>
-            )}
-
-            {G.estado==='post_canje'&&(
-              <div>
-                {objAhora.length>0?(
-                  <>
-                    <div style={{fontSize:11,color:'#27ae60',fontWeight:700,marginBottom:8}}>¡Podés tomar una tarjeta objetivo!</div>
-                    {objAhora.map((obj,i)=>{
-                      const pts=calcPts(obj.t.com,obj.sob,G.fase===2);
-                      return(
-                        <button key={i} onClick={()=>tomarObj(obj)} style={{...btn(obj.t.com?'gold':'pri'),marginBottom:6}}>
-                          <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
-                            <TObj t={obj.t} grande/>
-                            <span style={{color:obj.t.com?'#e67e22':'#fff',fontWeight:700,fontSize:14}}>{pts} pts</span>
-                            <span style={{fontSize:11,color:obj.t.com?'#888':'rgba(255,255,255,0.7)'}}>{obj.sob} sob.</span>
-                          </div>
-                        </button>
-                      );
-                    })}
-                    <button style={btn()} onClick={terminarTurno}>No tomar — pasar turno</button>
-                  </>
-                ):(
-                  <AutoPass onMount={terminarTurno} msg=""/>
-                )}
-              </div>
+  const PanelPilas = () => (
+    <div style={{background:'white',borderRadius:10,padding:'10px 12px',border:'1.5px solid #e8e3de',marginBottom:isPC?0:8}}>
+      <div style={{fontSize:8,fontWeight:700,letterSpacing:1.5,textTransform:'uppercase',color:'#aaa',marginBottom:8}}>Tarjetas objetivo</div>
+      <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+        {gmons.map((m,i)=>(
+          <div key={i} style={{
+            background:'#f8f8f8',
+            border:`1.5px solid ${m.length===0?'#e8e3de':m.length<=3?'#e74c3c':'#ccc'}`,
+            borderRadius:9,padding:'7px 9px',
+            opacity:m.length===0?0.4:1,
+            textAlign:'center',flexShrink:0,
+          }}>
+            {m.length>0?(
+              <>
+                <TObj t={m[m.length-1]}/>
+                <div style={{marginTop:5,fontWeight:800,fontSize:16,color:m.length<=3?'#e74c3c':'#444',lineHeight:1}}>{m.length}</div>
+              </>
+            ):(
+              <div style={{fontSize:10,color:'#bbb',padding:'4px 6px'}}>Vacía</div>
             )}
           </div>
-        )}
+        ))}
+      </div>
+    </div>
+  );
 
-        <div style={card}>
-          <div style={{fontSize:9,fontWeight:700,letterSpacing:1,textTransform:'uppercase',color:'#7a7570',marginBottom:6}}>Historial</div>
-          {(!glog||glog.length===0)
-            ?<div style={{fontSize:11,color:'#bbb',fontStyle:'italic'}}>Sin movimientos aún.</div>
-            :glog.slice(-14).reverse().map((e,i)=>{
-              const row={padding:'4px 0',borderBottom:'1px solid #f0ede8',display:'flex',alignItems:'center',gap:4,flexWrap:'wrap'};
-              if(typeof e==='string')return<div key={i} style={{...row,fontSize:11,color:'#555'}}>{e}</div>;
-              if(e.tipo==='info')return<div key={i} style={{...row,fontSize:11,color:'#e67e22'}}>{e.txt}</div>;
-              if(e.tipo==='punto')return(<div key={i} style={row}><span style={{fontSize:11,fontWeight:700,color:'#27ae60'}}>{nom(e.jugador)}</span><span style={{fontSize:11,color:'#27ae60'}}>+{e.pts}pts{e.com?' ★':''}</span><span style={{fontSize:10,color:'#aaa'}}>({e.sob} sob.)</span></div>);
-              if(e.tipo==='ficha')return(<div key={i} style={row}><span style={{fontSize:11,fontWeight:600,color:'#555'}}>{nom(e.jugador)}</span><span style={{fontSize:10,color:'#aaa'}}>elige</span><Dot color={e.color} size={15}/></div>);
-              if(e.tipo==='canje')return(<div key={i} style={row}><span style={{fontSize:11,fontWeight:600,color:'#555'}}>{nom(e.jugador)}</span><FRow arr={e.de} size={14}/><span style={{color:'#888',fontWeight:700,fontSize:13}}>→</span><FRow arr={e.por} size={14}/><span style={{fontSize:9,color:'#bbb'}}>(T.{e.eqId})</span></div>);
-              return null;
-            })}
+  const PanelHistorial = ({maxItems=14}) => (
+    <div style={{background:'white',borderRadius:10,padding:'10px 12px',border:'1.5px solid #e8e3de',flex:1,overflow:'hidden'}}>
+      <div style={{fontSize:8,fontWeight:700,letterSpacing:1.5,textTransform:'uppercase',color:'#aaa',marginBottom:6}}>Historial</div>
+      {(!glog||glog.length===0)
+        ?<div style={{fontSize:11,color:'#bbb',fontStyle:'italic'}}>Sin movimientos aún.</div>
+        :glog.slice(-maxItems).reverse().map((e,i)=>{
+          const row={padding:'4px 0',borderBottom:'1px solid #f0ede8',display:'flex',alignItems:'center',gap:4,flexWrap:'wrap'};
+          if(typeof e==='string')return<div key={i} style={{...row,fontSize:11,color:'#555'}}>{e}</div>;
+          if(e.tipo==='info')return<div key={i} style={{...row,fontSize:10,color:'#e67e22'}}>{e.txt}</div>;
+          if(e.tipo==='punto')return(<div key={i} style={row}><span style={{fontSize:11,fontWeight:700,color:'#27ae60'}}>{nom(e.jugador)}</span><span style={{fontSize:11,color:'#27ae60'}}>+{e.pts}pts{e.com?' ★':''}</span><span style={{fontSize:10,color:'#aaa'}}>({e.sob} sob.)</span></div>);
+          if(e.tipo==='ficha')return(<div key={i} style={row}><span style={{fontSize:11,fontWeight:600,color:'#555'}}>{nom(e.jugador)}</span><span style={{fontSize:10,color:'#aaa'}}>elige</span><Dot color={e.color} size={13}/></div>);
+          if(e.tipo==='canje')return(<div key={i} style={row}><span style={{fontSize:11,fontWeight:600,color:'#555'}}>{nom(e.jugador)}</span><FRow arr={e.de} size={13}/><span style={{color:'#888',fontWeight:700,fontSize:12}}>→</span><FRow arr={e.por} size={13}/><span style={{fontSize:9,color:'#bbb'}}>(T.{e.eqId})</span></div>);
+          return null;
+        })}
+    </div>
+  );
+
+  const PanelFichasJugadores = ({dotSize=24}) => (
+    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+      {[0,1].map(ji=>(
+        <div key={ji} style={{
+          background:G.turno===ji&&!G.fin?'#fff8f7':'white',
+          border:`2px solid ${G.turno===ji&&!G.fin?'#c0392b':'#d4cfc9'}`,
+          borderRadius:10,padding:'10px 12px'
+        }}>
+          <div style={{fontSize:9,fontWeight:700,textTransform:'uppercase',letterSpacing:1,
+            color:G.turno===ji&&!G.fin?'#c0392b':'#7a7570',marginBottom:6}}>
+            {nom(ji)}{online&&miRol===ji?' · vos':''} · {gfSafe[ji].length}
+          </div>
+          <div style={{display:'flex',flexWrap:'wrap',gap:5,minHeight:26,alignItems:'center'}}>
+            {gfSafe[ji].length===0
+              ?<span style={{fontSize:10,color:'#bbb',fontStyle:'italic'}}>Sin fichas</span>
+              :gfSafe[ji].map((c,k)=><Dot key={k} color={c} size={dotSize}/>)}
+          </div>
         </div>
+      ))}
+    </div>
+  );
 
-        {G.fin&&(
-          <div style={{background:'white',border:'2px solid #c0392b',borderRadius:12,padding:20,textAlign:'center',marginBottom:8}}>
-            <div style={{fontWeight:800,fontSize:28,color:'#c0392b',letterSpacing:3,marginBottom:4}}>¡FIN!</div>
-            <div style={{fontSize:14,fontWeight:700,color:'#e67e22',marginBottom:14}}>
-              {G.pts[0]===G.pts[1]?'¡Empate!':`Ganó ${G.pts[0]>G.pts[1]?G.j1:G.j2}`}
-            </div>
-            <div style={{display:'flex',gap:28,justifyContent:'center',marginBottom:16}}>
-              {[0,1].map(ji=>(<div key={ji}><div style={{fontSize:9,color:'#aaa',textTransform:'uppercase',letterSpacing:1,marginBottom:2}}>{nom(ji)}</div><div style={{fontWeight:800,fontSize:32,color:G.pts[ji]>=G.pts[1-ji]?'#e67e22':'#aaa'}}>{G.pts[ji]}</div></div>))}
-            </div>
-            <button onClick={onBack} style={{display:'block',width:'100%',padding:11,background:'#c0392b',border:'none',borderRadius:8,color:'white',fontWeight:700,fontSize:14,cursor:'pointer'}}>
-              NUEVA PARTIDA
+  const PanelAcciones = () => (
+    <div style={{background:'white',borderRadius:10,padding:'12px',border:'1.5px solid #e8e3de'}}>
+      {G.estado==='sacar'&&(
+        <div>
+          <div style={{fontSize:12,color:'#c0392b',marginBottom:8,fontWeight:600}}>
+            {nom(t)} tiene {gfSafe[t].length} fichas. Elegí cuál sacarle:
+          </div>
+          {gfSafe[t].map((c,i)=>(
+            <button key={i} onClick={()=>sacarFicha(i)} style={{...btn(),display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
+              <Dot color={c} size={18}/> Sacar {CNAME[c]}
             </button>
-          </div>
-        )}
-      </div>
-
-      {modalCanje&&(
-        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:200,display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={()=>setModalCanje(false)}>
-          <div style={{background:'white',borderRadius:'16px 16px 0 0',padding:16,width:'100%',maxWidth:500,maxHeight:'85vh',overflowY:'auto'}} onClick={e=>e.stopPropagation()}>
-            <div style={{fontWeight:800,fontSize:15,color:'#c0392b',marginBottom:10}}>ELEGIR CANJE</div>
-            <div style={{background:'#f8f8f8',border:'1.5px solid #e0dbd6',borderRadius:8,padding:'8px 10px',marginBottom:10}}>
-              <div style={{fontSize:9,fontWeight:700,letterSpacing:1,textTransform:'uppercase',color:'#7a7570',marginBottom:5}}>Tus fichas</div>
-              <div style={{display:'flex',flexWrap:'wrap',gap:5}}>{gfSafe[t].map((c,k)=><Dot key={k} color={c} size={26}/>)}</div>
-            </div>
-            <div style={{background:'#f8f8f8',border:'1.5px solid #e0dbd6',borderRadius:8,padding:'8px 10px',marginBottom:12}}>
-              <div style={{fontSize:9,fontWeight:700,letterSpacing:1,textTransform:'uppercase',color:'#7a7570',marginBottom:5}}>Tarjetas objetivo</div>
-              <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
-                {gmons.filter(m=>m.length>0).map((m,i)=>(
-                  <div key={i} style={{display:'flex',flexDirection:'column',alignItems:'center',gap:3}}>
-                    <TObj t={m[m.length-1]} grande/>
-                    <span style={{fontSize:9,fontWeight:700,color:m.length<=3?'#c0392b':'#999'}}>{m.length}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div style={{fontSize:11,color:'#7a7570',marginBottom:8,fontStyle:'italic'}}>Seleccioná qué canje querés hacer:</div>
-            {canjesDisp.map((c,i)=>(
-              <button key={i} onClick={()=>hacerCanje(c)} style={{display:'block',width:'100%',padding:'11px 12px',marginBottom:6,background:'#f8f8f8',border:'1.5px solid #e0dbd6',borderRadius:8,fontFamily:'inherit',fontSize:13,cursor:'pointer',textAlign:'left'}}>
-                <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
-                  <FRow arr={c.de} size={16}/>
-                  <span style={{fontWeight:700,color:'#555',fontSize:18}}>→</span>
-                  <FRow arr={c.por} size={16}/>
-                  <span style={{fontSize:10,color:'#aaa'}}>(T.{c.eqId})</span>
-                </div>
+          ))}
+        </div>
+      )}
+      {(G.estado==='elegir_j1'||G.estado==='elegir_j2'||G.estado==='elegir')&&(
+        <div>
+          <div style={{fontSize:11,color:'#7a7570',marginBottom:8}}>Elegí una ficha:</div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6}}>
+            {COLS.map(col=>(
+              <button key={col} onClick={()=>elegirFicha(col)} style={{...btn(),display:'flex',alignItems:'center',gap:8}}>
+                <Dot color={col} size={18}/> {CNAME[col]}
               </button>
             ))}
-            <button onClick={()=>setModalCanje(false)} style={{display:'block',width:'100%',padding:9,background:'#f0ede8',border:'1px solid #d4cfc9',borderRadius:7,color:'#888',fontSize:12,cursor:'pointer',marginTop:4}}>
-              Cancelar
-            </button>
           </div>
         </div>
       )}
+      {G.estado==='canje'&&(
+        canjesAhora.length>0
+          ?<button style={btn('pri')} onClick={()=>{setCanjesDisp(canjesAhora);setModalCanje(true);}}>
+            ⇄ {nom(t)}: hacer un canje ({canjesAhora.length} opción{canjesAhora.length>1?'es':''})
+          </button>
+          :<AutoPass onMount={terminarTurno} msg={`Sin canjes posibles — turno automático`}/>
+      )}
+      {G.estado==='post_canje'&&(
+        objAhora.length>0?(
+          <>
+            <div style={{fontSize:11,color:'#27ae60',fontWeight:700,marginBottom:8}}>¡Podés tomar una tarjeta objetivo!</div>
+            {objAhora.map((obj,i)=>{
+              const pts=calcPts(obj.t.com,obj.sob,G.fase===2);
+              return(
+                <button key={i} onClick={()=>tomarObj(obj)} style={{...btn(obj.t.com?'gold':'pri'),marginBottom:6}}>
+                  <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+                    <TObj t={obj.t} grande/>
+                    <span style={{color:obj.t.com?'#e67e22':'#fff',fontWeight:700,fontSize:14}}>{pts} pts</span>
+                    <span style={{fontSize:11,color:obj.t.com?'#888':'rgba(255,255,255,0.7)'}}>{obj.sob} sob.</span>
+                  </div>
+                </button>
+              );
+            })}
+            <button style={btn()} onClick={terminarTurno}>No tomar — pasar turno</button>
+          </>
+        ):(
+          <AutoPass onMount={terminarTurno} msg=""/>
+        )
+      )}
+    </div>
+  );
+
+  const TurnoBox = () => descTurno()?(
+    <div style={{
+      background:bloqueado?'#2a2a3a':'#1a1a2e',
+      borderRadius:8,padding:'9px 14px',
+      borderLeft:`4px solid ${bloqueado?'#555':'#c0392b'}`
+    }}>
+      <div style={{color:bloqueado?'#8892a4':'white',fontSize:13,fontWeight:500}}>{descTurno()}</div>
+    </div>
+  ):null;
+
+  const FinPartida = () => G.fin?(
+    <div style={{background:'white',border:'2px solid #c0392b',borderRadius:12,padding:20,textAlign:'center'}}>
+      <div style={{fontWeight:800,fontSize:28,color:'#c0392b',letterSpacing:3,marginBottom:4}}>¡FIN!</div>
+      <div style={{fontSize:14,fontWeight:700,color:'#e67e22',marginBottom:14}}>
+        {G.pts[0]===G.pts[1]?'¡Empate!':`Ganó ${G.pts[0]>G.pts[1]?G.j1:G.j2}`}
+      </div>
+      <div style={{display:'flex',gap:28,justifyContent:'center',marginBottom:16}}>
+        {[0,1].map(ji=>(<div key={ji}><div style={{fontSize:9,color:'#aaa',textTransform:'uppercase',letterSpacing:1,marginBottom:2}}>{nom(ji)}</div><div style={{fontWeight:800,fontSize:32,color:G.pts[ji]>=G.pts[1-ji]?'#e67e22':'#aaa'}}>{G.pts[ji]}</div></div>))}
+      </div>
+      <button onClick={onBack} style={{display:'block',width:'100%',padding:11,background:'#c0392b',border:'none',borderRadius:8,color:'white',fontWeight:700,fontSize:14,cursor:'pointer'}}>
+        NUEVA PARTIDA
+      </button>
+    </div>
+  ):null;
+
+  // ── MODAL CANJE (igual en ambos layouts) ──
+  const ModalCanje = () => modalCanje?(
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.6)',zIndex:200,display:'flex',alignItems:isPC?'center':'flex-end',justifyContent:'center'}} onClick={()=>setModalCanje(false)}>
+      <div style={{background:'white',borderRadius:isPC?'12px':'16px 16px 0 0',padding:20,width:'100%',maxWidth:520,maxHeight:'85vh',overflowY:'auto'}} onClick={e=>e.stopPropagation()}>
+        <div style={{fontWeight:800,fontSize:15,color:'#c0392b',marginBottom:12}}>ELEGIR CANJE — {nom(t)}</div>
+        <div style={{background:'#f8f8f8',border:'1.5px solid #e0dbd6',borderRadius:8,padding:'10px 12px',marginBottom:10}}>
+          <div style={{fontSize:8,fontWeight:700,letterSpacing:1,textTransform:'uppercase',color:'#7a7570',marginBottom:6}}>Tus fichas</div>
+          <div style={{display:'flex',flexWrap:'wrap',gap:6}}>{gfSafe[t].map((c,k)=><Dot key={k} color={c} size={28}/>)}</div>
+        </div>
+        <div style={{background:'#f8f8f8',border:'1.5px solid #e0dbd6',borderRadius:8,padding:'10px 12px',marginBottom:14}}>
+          <div style={{fontSize:8,fontWeight:700,letterSpacing:1,textTransform:'uppercase',color:'#7a7570',marginBottom:6}}>Tarjetas objetivo</div>
+          <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+            {gmons.filter(m=>m.length>0).map((m,i)=>(
+              <div key={i} style={{display:'flex',flexDirection:'column',alignItems:'center',gap:3}}>
+                <TObj t={m[m.length-1]} grande/>
+                <span style={{fontSize:9,fontWeight:700,color:m.length<=3?'#c0392b':'#999'}}>{m.length}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div style={{fontSize:11,color:'#7a7570',marginBottom:10,fontStyle:'italic'}}>Elegí el canje:</div>
+        {canjesDisp.map((c,i)=>(
+          <button key={i} onClick={()=>hacerCanje(c)} style={{display:'block',width:'100%',padding:'12px 14px',marginBottom:7,background:'#f8f8f8',border:'1.5px solid #e0dbd6',borderRadius:9,fontFamily:'inherit',fontSize:13,cursor:'pointer',textAlign:'left'}}>
+            <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+              <FRow arr={c.de} size={20}/>
+              <span style={{fontWeight:700,color:'#555',fontSize:18}}>→</span>
+              <FRow arr={c.por} size={20}/>
+              <span style={{fontSize:10,color:'#aaa'}}>(T.{c.eqId})</span>
+            </div>
+          </button>
+        ))}
+        <button onClick={()=>setModalCanje(false)} style={{display:'block',width:'100%',padding:9,background:'#f0ede8',border:'1px solid #d4cfc9',borderRadius:7,color:'#888',fontSize:12,cursor:'pointer',marginTop:4}}>
+          Cancelar
+        </button>
+      </div>
+    </div>
+  ):null;
+
+  // ── HEADER (compartido) ──
+  const Header = () => (
+    <div style={{background:'#1a1a2e',padding:'8px 16px',display:'flex',alignItems:'center',justifyContent:'space-between',position:'sticky',top:0,zIndex:10,flexShrink:0}}>
+      <span style={{fontWeight:800,fontSize:16,color:'#e94560',letterSpacing:3}}>DECISIÓN</span>
+      <div style={{display:'flex',gap:20,alignItems:'center'}}>
+        {[0,1].map(ji=>(
+          <div key={ji} style={{textAlign:'center'}}>
+            <div style={{fontSize:8,letterSpacing:1,textTransform:'uppercase',color:G.turno===ji?'#f5a623':'#8892a4'}}>
+              {nom(ji)}{online&&miRol===ji?' ★':''}
+            </div>
+            <div style={{fontWeight:800,fontSize:22,color:G.turno===ji?'#f5a623':'#eaeaea',lineHeight:1}}>{G.pts[ji]}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{display:'flex',gap:6,alignItems:'center'}}>
+        {G.fase===2&&<span style={{fontSize:9,background:'#e67e22',color:'white',padding:'2px 6px',borderRadius:4}}>FASE 2</span>}
+        {online&&salaId&&<span style={{fontSize:9,color:'#888',letterSpacing:1,background:'rgba(255,255,255,0.07)',padding:'2px 7px',borderRadius:4}}>{salaId}</span>}
+        <button onClick={onBack} style={{padding:'4px 10px',background:'transparent',border:'1px solid rgba(255,255,255,0.15)',borderRadius:5,color:'#8892a4',fontSize:10,cursor:'pointer'}}>Menú</button>
+      </div>
+    </div>
+  );
+
+  // ════════════════════════════════════
+  //   LAYOUT PC — Opción D
+  // ════════════════════════════════════
+  if(isPC) return(
+    <div style={{height:'100vh',background:'#f0ede8',fontFamily:'system-ui,sans-serif',display:'flex',flexDirection:'column',overflow:'hidden'}}>
+      <Header/>
+      <div style={{flex:1,display:'grid',gridTemplateColumns:'310px 1fr',overflow:'hidden'}}>
+
+        {/* Columna izquierda: eq + pilas + historial */}
+        <div style={{background:'white',borderRight:'1.5px solid #d4cfc9',padding:'12px',display:'flex',flexDirection:'column',gap:10,overflowY:'auto'}}>
+          <PanelEquivalencias eqSize={20}/>
+          <PanelPilas/>
+          <PanelHistorial maxItems={20}/>
+        </div>
+
+        {/* Columna derecha: fichas grandes + turno + acciones */}
+        <div style={{padding:'14px 16px',display:'flex',flexDirection:'column',gap:10,overflowY:'auto'}}>
+          <TurnoBox/>
+          <PanelFichasJugadores dotSize={40}/>
+          {!G.fin&&!bloqueado&&<PanelAcciones/>}
+          {G.fin&&<FinPartida/>}
+        </div>
+      </div>
+      <ModalCanje/>
+    </div>
+  );
+
+  // ════════════════════════════════════
+  //   LAYOUT MÓVIL — actual
+  // ════════════════════════════════════
+  return(
+    <div style={{minHeight:'100vh',background:'#f0ede8',fontFamily:'system-ui,sans-serif',display:'flex',flexDirection:'column'}}>
+      <Header/>
+      <div style={{flex:1,overflowY:'auto',padding:'10px 12px'}}>
+        <PanelEquivalencias eqSize={13}/>
+        <div style={{marginBottom:8}}><PanelPilas/></div>
+        <PanelFichasJugadores dotSize={24}/>
+        <div style={{marginBottom:8}}/>
+        <TurnoBox/>
+        <div style={{marginBottom:8}}/>
+        {!G.fin&&!bloqueado&&<><PanelAcciones/><div style={{marginBottom:8}}/></>}
+        <PanelHistorial maxItems={14}/>
+        {G.fin&&<><div style={{marginBottom:8}/><FinPartida/></>}
+      </div>
+      <ModalCanje/>
     </div>
   );
 }
