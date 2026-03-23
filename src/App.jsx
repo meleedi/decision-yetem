@@ -791,9 +791,9 @@ function Game({j1,j2,eqIds,modo,miRol,salaId,estadoInicial,onBack}){
         {canjesDisp.map((c,i)=>(
           <button key={i} onClick={()=>hacerCanje(c)} style={{display:'block',width:'100%',padding:'16px 18px',marginBottom:8,background:'#f8f8f8',border:'2px solid #e0dbd6',borderRadius:10,fontFamily:'inherit',fontSize:13,cursor:'pointer',textAlign:'left'}}>
             <div style={{display:'flex',alignItems:'center',gap:12,flexWrap:'wrap'}}>
-              <FRow arr={c.de} size={50}/>
-              <span style={{fontWeight:700,color:'#555',fontSize:28}}>→</span>
-              <FRow arr={c.por} size={50}/>
+              <FRow arr={c.de} size={28}/>
+              <span style={{fontWeight:700,color:'#555',fontSize:20}}>→</span>
+              <FRow arr={c.por} size={28}/>
               <span style={{fontSize:11,color:'#aaa',marginLeft:4}}>(T.{c.eqId})</span>
             </div>
           </button>
@@ -865,7 +865,7 @@ function Game({j1,j2,eqIds,modo,miRol,salaId,estadoInicial,onBack}){
 
         {/* ── COLUMNA IZQUIERDA: equivalencias + historial ── */}
         <div style={{background:'white',borderRight:'1.5px solid #d4cfc9',padding:'16px',display:'flex',flexDirection:'column',gap:12,overflowY:'auto'}}>
-          <PanelEquivalencias eqSize={20}/>
+          <PanelEquivalencias eqSize={28}/>
           <PanelHistorial maxItems={24}/>
         </div>
 
