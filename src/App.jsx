@@ -791,9 +791,9 @@ function Game({j1,j2,eqIds,modo,miRol,salaId,estadoInicial,onBack}){
         {canjesDisp.map((c,i)=>(
           <button key={i} onClick={()=>hacerCanje(c)} style={{display:'block',width:'100%',padding:'12px 14px',marginBottom:7,background:'#f8f8f8',border:'1.5px solid #e0dbd6',borderRadius:9,fontFamily:'inherit',fontSize:13,cursor:'pointer',textAlign:'left'}}>
             <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
-              <FRow arr={c.de} size={isPC?28:20}/>
+              <FRow arr={c.de} size={isPC?35:20}/>
               <span style={{fontWeight:700,color:'#555',fontSize:20}}>→</span>
-              <FRow arr={c.por} size={isPC?28:20}/>
+              <FRow arr={c.por} size={isPC?35:20}/>
               <span style={{fontSize:10,color:'#aaa'}}>(T.{c.eqId})</span>
             </div>
           </button>
@@ -828,7 +828,6 @@ function Game({j1,j2,eqIds,modo,miRol,salaId,estadoInicial,onBack}){
   );
 
   // Panel pilas PC: 4 pilas en fila, fichas más grandes, ocupan todo el ancho
-  // El ancho de la columna derecha es ~(100vw - 380px). Dividido en 4 pilas con gap.
   const PanelPilasPC = () => (
     <div style={{background:'white',borderRadius:10,padding:'12px 14px',border:'1.5px solid #e8e3de'}}>
       <div style={{fontSize:8,fontWeight:700,letterSpacing:1.5,textTransform:'uppercase',color:'#aaa',marginBottom:10}}>Tarjetas objetivo</div>
@@ -843,8 +842,7 @@ function Game({j1,j2,eqIds,modo,miRol,salaId,estadoInicial,onBack}){
           }}>
             {m.length>0?(
               <>
-                {/* Fichas de la tarjeta objetivo — más grandes */}
-                <TObj t={m[m.length-1]} pilaSz={16}/>
+                <TObj t={m[m.length-1]} pilaSz={20}/>
                 <div style={{marginTop:8,fontWeight:800,fontSize:20,color:m.length<=3?'#e74c3c':'#444',lineHeight:1}}>{m.length}</div>
               </>
             ):(
@@ -862,22 +860,18 @@ function Game({j1,j2,eqIds,modo,miRol,salaId,estadoInicial,onBack}){
   if(isPC) return(
     <div style={{height:'100vh',background:'#f0ede8',fontFamily:'system-ui,sans-serif',display:'flex',flexDirection:'column',overflow:'hidden'}}>
       <Header/>
-      {/* Grid: izquierda 380px (eq + historial) | derecha el resto (pilas + fichas + acciones) */}
-      <div style={{flex:1,display:'grid',gridTemplateColumns:'380px 1fr',overflow:'hidden'}}>
+      {/* Columna izq 760px (doble de 380) | derecha el resto */}
+      <div style={{flex:1,display:'grid',gridTemplateColumns:'760px 1fr',overflow:'hidden'}}>
 
         {/* ── COLUMNA IZQUIERDA: equivalencias + historial ── */}
-        <div style={{background:'white',borderRight:'1.5px solid #d4cfc9',padding:'14px',display:'flex',flexDirection:'column',gap:12,overflowY:'auto'}}>
+        <div style={{background:'white',borderRight:'1.5px solid #d4cfc9',padding:'16px',display:'flex',flexDirection:'column',gap:12,overflowY:'auto'}}>
           <PanelEquivalencias eqSize={20}/>
           <PanelHistorial maxItems={24}/>
         </div>
 
-        {/* ── COLUMNA DERECHA: pilas (top, ancho completo) + fichas + acciones ── */}
+        {/* ── COLUMNA DERECHA: pilas + fichas + acciones ── */}
         <div style={{padding:'14px 16px',display:'flex',flexDirection:'column',gap:12,overflowY:'auto'}}>
-
-          {/* Pilas — ocupan todo el ancho de la columna derecha */}
           <PanelPilasPC/>
-
-          {/* Fichas + Turno + Acciones */}
           <TurnoBox/>
           <PanelFichasJugadores dotSize={40}/>
           {!G.fin&&!bloqueado&&<PanelAcciones/>}
