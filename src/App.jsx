@@ -789,12 +789,12 @@ function Game({j1,j2,eqIds,modo,miRol,salaId,estadoInicial,onBack}){
         </div>
         <div style={{fontSize:11,color:'#7a7570',marginBottom:10,fontStyle:'italic'}}>Elegí el canje:</div>
         {canjesDisp.map((c,i)=>(
-          <button key={i} onClick={()=>hacerCanje(c)} style={{display:'block',width:'100%',padding:isPC?'14px 16px':'12px 14px',marginBottom:7,background:'#f8f8f8',border:'1.5px solid #e0dbd6',borderRadius:9,fontFamily:'inherit',fontSize:13,cursor:'pointer',textAlign:'left'}}>
-            <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
-              <FRow arr={c.de} size={isPC?50:20}/>
-              <span style={{fontWeight:700,color:'#555',fontSize:isPC?26:20}}>→</span>
-              <FRow arr={c.por} size={isPC?50:20}/>
-              <span style={{fontSize:10,color:'#aaa'}}>(T.{c.eqId})</span>
+          <button key={i} onClick={()=>hacerCanje(c)} style={{display:'block',width:'100%',padding:'16px 18px',marginBottom:8,background:'#f8f8f8',border:'2px solid #e0dbd6',borderRadius:10,fontFamily:'inherit',fontSize:13,cursor:'pointer',textAlign:'left'}}>
+            <div style={{display:'flex',alignItems:'center',gap:12,flexWrap:'wrap'}}>
+              <FRow arr={c.de} size={50}/>
+              <span style={{fontWeight:700,color:'#555',fontSize:28}}>→</span>
+              <FRow arr={c.por} size={50}/>
+              <span style={{fontSize:11,color:'#aaa',marginLeft:4}}>(T.{c.eqId})</span>
             </div>
           </button>
         ))}
