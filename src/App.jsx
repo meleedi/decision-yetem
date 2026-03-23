@@ -770,7 +770,7 @@ function Game({j1,j2,eqIds,modo,miRol,salaId,estadoInicial,onBack}){
   // ── MODAL CANJE (igual en ambos layouts) ──
   const ModalCanje = () => modalCanje?(
     <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.6)',zIndex:200,display:'flex',alignItems:isPC?'center':'flex-end',justifyContent:'center'}} onClick={()=>setModalCanje(false)}>
-      <div style={{background:'white',borderRadius:isPC?'12px':'16px 16px 0 0',padding:20,width:'100%',maxWidth:520,maxHeight:'85vh',overflowY:'auto'}} onClick={e=>e.stopPropagation()}>
+      <div style={{background:'white',borderRadius:isPC?'12px':'16px 16px 0 0',padding:isPC?28:20,width:'100%',maxWidth:isPC?700:520,maxHeight:'90vh',overflowY:'auto'}} onClick={e=>e.stopPropagation()}>
         <div style={{fontWeight:800,fontSize:15,color:'#c0392b',marginBottom:12}}>ELEGIR CANJE — {nom(t)}</div>
         <div style={{background:'#f8f8f8',border:'1.5px solid #e0dbd6',borderRadius:8,padding:'10px 12px',marginBottom:10}}>
           <div style={{fontSize:8,fontWeight:700,letterSpacing:1,textTransform:'uppercase',color:'#7a7570',marginBottom:6}}>Tus fichas</div>
@@ -789,11 +789,11 @@ function Game({j1,j2,eqIds,modo,miRol,salaId,estadoInicial,onBack}){
         </div>
         <div style={{fontSize:11,color:'#7a7570',marginBottom:10,fontStyle:'italic'}}>Elegí el canje:</div>
         {canjesDisp.map((c,i)=>(
-          <button key={i} onClick={()=>hacerCanje(c)} style={{display:'block',width:'100%',padding:'12px 14px',marginBottom:7,background:'#f8f8f8',border:'1.5px solid #e0dbd6',borderRadius:9,fontFamily:'inherit',fontSize:13,cursor:'pointer',textAlign:'left'}}>
-            <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
-              <FRow arr={c.de} size={isPC?35:20}/>
-              <span style={{fontWeight:700,color:'#555',fontSize:20}}>→</span>
-              <FRow arr={c.por} size={isPC?35:20}/>
+          <button key={i} onClick={()=>hacerCanje(c)} style={{display:'block',width:'100%',padding:isPC?'14px 16px':'12px 14px',marginBottom:7,background:'#f8f8f8',border:'1.5px solid #e0dbd6',borderRadius:9,fontFamily:'inherit',fontSize:13,cursor:'pointer',textAlign:'left'}}>
+            <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+              <FRow arr={c.de} size={isPC?50:20}/>
+              <span style={{fontWeight:700,color:'#555',fontSize:isPC?26:20}}>→</span>
+              <FRow arr={c.por} size={isPC?50:20}/>
               <span style={{fontSize:10,color:'#aaa'}}>(T.{c.eqId})</span>
             </div>
           </button>
