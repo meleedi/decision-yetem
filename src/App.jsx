@@ -563,38 +563,37 @@ function Game({j1,j2,eqIds,modo,miRol,salaId,estadoInicial,onBack}){
     const ji=n.turno,fi=n.f[ji],otro=1-ji;
     const eaL=eaDeN(n);
 
-    // Determinar qué le toca a ji en su próximo turno
+    // 1. Determinar proxAccion de ji (qué hace cuando vuelva a jugar)
     if(fi.length===0){
       n.proxAccion[ji]='elegir';
     }else{
       const cjs=getCanjes(eaL,fi);
       if(cjs.length===0){
-        // Sin canjes: ji pierde su próximo turno y luego elige ficha
-        // El oponente jugará normalmente, y cuando le toque a ji, se saltea una vez
         n.log.push({tipo:'info',txt:`⚠ ${nom(ji)} sin canjes — pierde un turno`});
-        n.turnosPerdidos[ji]=1;
-        n.proxAccion[ji]='elegir';
+        n.turnosPerdidos[ji]=1;  // saltear el próximo turno de ji
+        n.proxAccion[ji]='elegir'; // cuando vuelva después del salteo, elige ficha
       }else if(esPuntoMuerto(eaL,fi,cjs)){
         n.log.push({tipo:'info',txt:`⚠ ${nom(ji)} en punto muerto — canje obligado`});
-        n.proxAccion[ji]='elegir'; // después del canje obligado, elige ficha
+        n.proxAccion[ji]='elegir';
       }else{
-        n.proxAccion[ji]=null; // turno normal
+        n.proxAccion[ji]=null;
       }
     }
 
-    // Pasar al oponente
-    // Si el oponente tiene turno perdido pendiente, lo saltea y vuelve a ji
-    if(n.turnosPerdidos[otro]>0){
-      n.turnosPerdidos[otro]=0; // consumir el turno perdido
-      n.log.push({tipo:'info',txt:`⚠ ${nom(otro)} pierde su turno`});
-      // Otro se saltea → ji juega de nuevo con su proxAccion
-      n.estado=n.proxAccion[ji]||'canje';
-      n.proxAccion[ji]=null;
-      // turno sigue siendo ji
-    }else{
-      n.turno=otro;
-      n.estado=n.proxAccion[otro]||'canje';
-      n.proxAccion[otro]=null;
+    // 2. Pasar SIEMPRE al otro primero
+    n.turno=otro;
+    n.estado=n.proxAccion[otro]||'canje';
+    n.proxAccion[otro]=null;
+
+    // 3. Si ese otro tiene turno perdido, lo saltea y vuelve a ji
+    if(n.turnosPerdidos[n.turno]>0){
+      n.turnosPerdidos[n.turno]=0;
+      n.log.push({tipo:'info',txt:`⚠ ${nom(n.turno)} pierde su turno`});
+      // Volver a ji
+      const vueltaA=1-n.turno;
+      n.turno=vueltaA;
+      n.estado=n.proxAccion[vueltaA]||'canje';
+      n.proxAccion[vueltaA]=null;
     }
   };
 
@@ -687,7 +686,7 @@ function Game({j1,j2,eqIds,modo,miRol,salaId,estadoInicial,onBack}){
           <div key={eq.id} style={{background:'#fff5f5',border:'1.5px solid #e8b4b0',borderRadius:9,padding:'8px 10px'}}>
             <div style={{fontWeight:800,fontSize:13,color:'#c0392b',marginBottom:6,paddingBottom:4,borderBottom:'1.5px solid #fdd'}}>T. {eq.id}</div>
             {eq.c.map((c,i)=>(
-              <div key={i} style={{display:'flex',alignItems:'center',gap:5,marginBottom:5}}>
+              <div key={i} style={{display:'flex',alignItems:'center',gap:5,marginBottom:sz>20?9:5}}>
                 <FRow arr={c.d} size={sz}/>
                 <span style={{fontSize:10,color:'#ccc',flexShrink:0}}>⇌</span>
                 <FRow arr={c.p} size={sz}/>
@@ -838,6 +837,20 @@ function Game({j1,j2,eqIds,modo,miRol,salaId,estadoInicial,onBack}){
           <div style={{fontSize:8,fontWeight:700,letterSpacing:1,textTransform:'uppercase',color:'#7a7570',marginBottom:6}}>Tus fichas</div>
           <div style={{display:'flex',flexWrap:'wrap',gap:6}}>{gf[t].map((c,k)=><Dot key={k} color={c} size={isPC?32:26}/>)}</div>
         </div>
+        {/* Últimos 3 movimientos del jugador activo */}
+        {glog.filter(e=>e&&e.tipo==='canje'&&e.jugador===t).slice(-3).length>0&&(
+          <div style={{background:'#f8f8f8',border:'1.5px solid #e0dbd6',borderRadius:8,padding:'10px 12px',marginBottom:10}}>
+            <div style={{fontSize:8,fontWeight:700,letterSpacing:1,textTransform:'uppercase',color:'#7a7570',marginBottom:6}}>Tus últimos canjes</div>
+            {glog.filter(e=>e&&e.tipo==='canje'&&e.jugador===t).slice(-3).reverse().map((e,i)=>(
+              <div key={i} style={{display:'flex',alignItems:'center',gap:6,marginBottom:i<2?5:0,opacity:1-i*0.2}}>
+                <FRow arr={e.de} size={isPC?16:13}/>
+                <span style={{color:'#aaa',fontWeight:700,fontSize:13}}>→</span>
+                <FRow arr={e.por} size={isPC?16:13}/>
+                <span style={{fontSize:9,color:'#ccc'}}>(T.{e.eqId})</span>
+              </div>
+            ))}
+          </div>
+        )}
         <div style={{background:'#f8f8f8',border:'1.5px solid #e0dbd6',borderRadius:8,padding:'10px 12px',marginBottom:14}}>
           <div style={{fontSize:8,fontWeight:700,letterSpacing:1,textTransform:'uppercase',color:'#7a7570',marginBottom:6}}>Tarjetas objetivo</div>
           <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
@@ -871,9 +884,9 @@ function Game({j1,j2,eqIds,modo,miRol,salaId,estadoInicial,onBack}){
   if(isPC) return(
     <div style={{height:'100vh',background:'#f0ede8',fontFamily:'system-ui,sans-serif',display:'flex',flexDirection:'column',overflow:'hidden'}}>
       <Hdr/>
-      <div style={{flex:1,display:'grid',gridTemplateColumns:'760px 1fr',overflow:'hidden'}}>
+      <div style={{flex:1,display:'grid',gridTemplateColumns:'610px 1fr',overflow:'hidden'}}>
         <div style={{background:'white',borderRight:'1.5px solid #d4cfc9',padding:'16px',display:'flex',flexDirection:'column',gap:12,overflowY:'auto'}}>
-          <PanelEq sz={28}/>
+          <PanelEq sz={36}/>
           <PanelHist max={24}/>
         </div>
         <div style={{padding:'14px 16px',display:'flex',flexDirection:'column',gap:12,overflowY:'auto'}}>
