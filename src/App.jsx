@@ -572,7 +572,7 @@ function Game({j1,j2,eqIds,modo,empieza,miRol,salaId,estadoInicial,onBack}){
     G.estado==='sacar'?miRol===G.turno:miRol!==G.turno
   );
 
-  // ── FUNCIÓN CENTRAL: calcular próximo estado y pasar turno ──
+  // ── FUNCIÓN CENTRAL: pasar al siguiente turno ──
   const siguienteTurno=n=>{
     const ji=n.turno;
     const fi=n.f[ji];
@@ -596,15 +596,30 @@ function Game({j1,j2,eqIds,modo,empieza,miRol,salaId,estadoInicial,onBack}){
       }
     }
 
-    // Pasar al otro. Si el otro tiene salteos, consumir uno y quedarme en ji.
+    // Intentar pasar al otro
     if(n.saltear[otro]>0){
+      // El otro tiene que saltear — consumirlo
       n.saltear[otro]--;
       n.log.push({tipo:'info',txt:`⚠ ${nom(otro)} pierde su turno`});
-      // ji juega de nuevo con su proxEstado
-      n.estado=n.proxEstado[ji]||'canje';
-      n.proxEstado[ji]=null;
-      // n.turno sigue siendo ji
+      // ¿Ji también tiene que saltear su propio turno ahora?
+      if(n.saltear[ji]>0){
+        // Ambos saltean — ji también pierde este turno
+        // Ninguno puede jugar ahora: ji elige ficha (ese es su proxEstado)
+        // y después el otro también elige
+        // El estado queda: ji elige ficha (consumir su salteo también)
+        n.saltear[ji]--;
+        n.log.push({tipo:'info',txt:`⚠ ${nom(ji)} pierde su turno`});
+        // Ambos perdieron — empezar de cero: ji elige ficha primero
+        n.estado='elegir';
+        // turno sigue en ji
+      } else {
+        // Solo el otro saltea — ji juega de nuevo
+        n.estado=n.proxEstado[ji]||'canje';
+        n.proxEstado[ji]=null;
+        // turno sigue en ji
+      }
     } else {
+      // Pasar al otro normalmente
       n.turno=otro;
       n.estado=n.proxEstado[otro]||'canje';
       n.proxEstado[otro]=null;
@@ -640,13 +655,24 @@ function Game({j1,j2,eqIds,modo,empieza,miRol,salaId,estadoInicial,onBack}){
           // Ambos eligieron. El primer canje lo hace el jugador original
           // (el que eligió primero, que es 1-ji porque ji fue el último)
           const primero=1-ji;
-          // Si el primero tiene salteos, los consume y empieza el otro
+          // Aplicar salteos: si primero tiene saltear, lo consume y el otro empieza
           if(n.saltear[primero]>0){
             n.saltear[primero]--;
             n.log.push({tipo:'info',txt:`⚠ ${nom(primero)} pierde su turno`});
-            n.turno=ji;
-            n.estado=n.proxEstado[ji]||'canje';
-            n.proxEstado[ji]=null;
+            // El otro (ji) empieza. Pero ¿ji también tiene saltear?
+            if(n.saltear[ji]>0){
+              // Ambos pierden turno — ambos eligen ficha nueva
+              // ji elige primero (tiene el turno ahora), luego primero
+              n.saltear[ji]--;
+              n.log.push({tipo:'info',txt:`⚠ ${nom(ji)} pierde su turno`});
+              // Reiniciar elección: ji elige ficha
+              n.estado='elegir';
+              n.turno=ji;
+            } else {
+              n.turno=ji;
+              n.estado=n.proxEstado[ji]||'canje';
+              n.proxEstado[ji]=null;
+            }
           } else {
             n.turno=primero;
             n.estado=n.proxEstado[primero]||'canje';
