@@ -163,11 +163,28 @@ function normalizarG(g){
 
     // Arrays numéricos
     n.pts=toNum(n.pts);
-    n.turnosPerdidos=toNum(n.turnosPerdidos);
     n.eqIds=toNum(n.eqIds);
 
-    // proxAccion: array de null/string
-    n.proxAccion=toArr(n.proxAccion).map(x=>x===undefined?null:x);
+    // saltear (nuevo) — compatible con turnosPerdidos (viejo)
+    if(n.turnosPerdidos!==undefined){
+      n.saltear=toNum(n.turnosPerdidos);
+      delete n.turnosPerdidos;
+    } else {
+      n.saltear=toNum(n.saltear||[0,0]);
+    }
+    if(!n.saltear||n.saltear.length<2)n.saltear=[0,0];
+
+    // proxEstado (nuevo) — compatible con proxAccion (viejo)
+    if(n.proxAccion!==undefined){
+      n.proxEstado=toArr(n.proxAccion).map(x=>x===undefined?null:x);
+      delete n.proxAccion;
+    } else {
+      n.proxEstado=toArr(n.proxEstado||[null,null]).map(x=>x===undefined?null:x);
+    }
+    if(!n.proxEstado||n.proxEstado.length<2)n.proxEstado=[null,null];
+
+    // inicFichas: cuántos jugadores eligieron ficha al inicio
+    if(n.inicFichas===undefined)n.inicFichas=2; // partida vieja: ya arrancó
 
     // log: array de objetos
     n.log=toArr(n.log).map(e=>{
@@ -196,14 +213,30 @@ function nuevoG(j1,j2,eqIds,modo='completa',empieza='azar'){
   const n=pool.length,pila=Math.floor(n/4),extra=n%4;
   const mons=[];let idx=0;
   for(let i=0;i<4;i++){const sz=pila+(i<extra?1:0);mons.push(pool.slice(idx,idx+sz));idx+=sz;}
-  let primerCanje=0;
-  if(empieza==='azar') primerCanje=Math.random()<0.5?0:1;
-  else if(empieza==='j2') primerCanje=1;
-  return{j1,j2,eqIds:eqIds.map(Number),modo,mons,
-    turno:0,f:[[],[]],pts:[0,0],fase:1,monVacios:0,
-    estado:'elegir_j1',primerCanje,
-    proxAccion:[null,null],turnosPerdidos:[0,0],
-    log:[],fin:false};
+  // quién empieza
+  let primero=0;
+  if(empieza==='azar') primero=Math.random()<0.5?0:1;
+  else if(empieza==='j2') primero=1;
+  return{
+    j1,j2,eqIds:eqIds.map(Number),modo,mons,
+    // turno: índice del jugador activo
+    turno:primero,
+    // estado:
+    // 'elegir_ini'  → el jugador activo elige su ficha inicial (inicio de partida)
+    // 'esperar_ini' → el otro jugador ya eligió, este todavía no (solo el otro ve esto)
+    // 'canje'       → debe hacer un canje
+    // 'post_canje'  → puede tomar tarjeta o pasar
+    // 'sacar'       → el oponente le saca una ficha (exceso)
+    estado:'elegir_ini',
+    // fase de inicio: cuántos jugadores ya eligieron ficha
+    inicFichas:0,
+    // saltear[i]: cuántos turnos debe saltear el jugador i
+    saltear:[0,0],
+    // proxEstado[i]: qué estado tendrá el jugador i cuando le toque (null = 'canje' normal)
+    proxEstado:[null,null],
+    f:[[],[]],pts:[0,0],fase:1,monVacios:0,
+    log:[],fin:false
+  };
 }
 
 // ── SERIALIZAR/DESERIALIZAR PARA FIREBASE ──
@@ -539,6 +572,45 @@ function Game({j1,j2,eqIds,modo,empieza,miRol,salaId,estadoInicial,onBack}){
     G.estado==='sacar'?miRol===G.turno:miRol!==G.turno
   );
 
+  // ── FUNCIÓN CENTRAL: calcular próximo estado y pasar turno ──
+  const siguienteTurno=n=>{
+    const ji=n.turno;
+    const fi=n.f[ji];
+    const otro=1-ji;
+    const eaL=eaDeN(n);
+
+    // Determinar qué le toca a ji la próxima vez que juegue
+    if(fi.length===0){
+      n.proxEstado[ji]='elegir';
+    } else {
+      const cjs=getCanjes(eaL,fi);
+      if(cjs.length===0){
+        n.log.push({tipo:'info',txt:`⚠ ${nom(ji)} sin canjes — pierde un turno`});
+        n.saltear[ji]=1;
+        n.proxEstado[ji]='elegir';
+      } else if(esPuntoMuerto(eaL,fi,cjs)){
+        n.log.push({tipo:'info',txt:`⚠ ${nom(ji)} en punto muerto — canje obligado`});
+        n.proxEstado[ji]='elegir';
+      } else {
+        n.proxEstado[ji]=null;
+      }
+    }
+
+    // Pasar al otro. Si el otro tiene salteos, consumir uno y quedarme en ji.
+    if(n.saltear[otro]>0){
+      n.saltear[otro]--;
+      n.log.push({tipo:'info',txt:`⚠ ${nom(otro)} pierde su turno`});
+      // ji juega de nuevo con su proxEstado
+      n.estado=n.proxEstado[ji]||'canje';
+      n.proxEstado[ji]=null;
+      // n.turno sigue siendo ji
+    } else {
+      n.turno=otro;
+      n.estado=n.proxEstado[otro]||'canje';
+      n.proxEstado[otro]=null;
+    }
+  };
+
   const elegirFicha=color=>{
     if(online&&bloqueado)return;
     upd(n=>{
@@ -547,50 +619,44 @@ function Game({j1,j2,eqIds,modo,empieza,miRol,salaId,estadoInicial,onBack}){
       n.log.push({tipo:'ficha',jugador:ji,color});
       if(n.f[ji].length>10){n.estado='sacar';return;}
 
-      if(n.estado==='elegir_j1'){
-        // J1 eligió → verificar canjes, luego J2 elige
-        const eaL=eaDeN(n);
-        if(getCanjes(eaL,n.f[0]).length===0){
-          n.log.push({tipo:'info',txt:`⚠ ${nom(0)} sin canjes — pierde un turno`});
-          n.turnosPerdidos[0]=1;n.proxAccion[0]='elegir';
-        }
-        n.turno=1;n.estado='elegir_j2';
+      if(n.estado==='elegir_ini'){
+        // Fase de inicio: registrar que este jugador eligió
+        n.inicFichas=(n.inicFichas||0)+1;
 
-      }else if(n.estado==='elegir_j2'){
-        // J2 eligió → verificar canjes, luego arrancar
+        // Verificar si la ficha elegida tiene canjes
         const eaL=eaDeN(n);
-        if(getCanjes(eaL,n.f[1]).length===0){
-          n.log.push({tipo:'info',txt:`⚠ ${nom(1)} sin canjes — pierde un turno`});
-          n.turnosPerdidos[1]=1;n.proxAccion[1]='elegir';
-        }
-        // El primer turno de canje va al jugador con turno=n.turno guardado en el estado inicial
-        // (nuevoG ya guardó primerTurno=0 o 1 en n.turno antes de settear estado)
-        // Pero ahora n.turno=1 porque J2 acaba de elegir. Usar n.primerCanje si existe.
-        const primero=n.primerCanje!==undefined?n.primerCanje:0;
-        if(n.turnosPerdidos[primero]>0){
-          n.turnosPerdidos[primero]=0;
-          n.log.push({tipo:'info',txt:`⚠ ${nom(primero)} pierde su turno`});
-          const otro=1-primero;
-          n.turno=otro;n.estado=n.proxAccion[otro]||'canje';n.proxAccion[otro]=null;
-        }else{
-          n.turno=primero;n.estado='canje';
+        const cjs=getCanjes(eaL,n.f[ji]);
+        if(cjs.length===0){
+          n.log.push({tipo:'info',txt:`⚠ ${nom(ji)} sin canjes — pierde un turno`});
+          n.saltear[ji]=1;
+          n.proxEstado[ji]='elegir';
         }
 
-      }else if(n.estado==='elegir'){
-        // Excepción mid-game: elegir ficha → pasar al otro
-        const otro=1-ji;
-        n.turno=otro;
-        n.estado=n.proxAccion[otro]||'canje';
-        n.proxAccion[otro]=null;
-        // Si el otro también tiene turno perdido, lo saltea
-        if(n.turnosPerdidos[n.turno]>0){
-          n.turnosPerdidos[n.turno]=0;
-          n.log.push({tipo:'info',txt:`⚠ ${nom(n.turno)} pierde su turno`});
-          const vuelta=1-n.turno;
-          n.turno=vuelta;
-          n.estado=n.proxAccion[vuelta]||'canje';
-          n.proxAccion[vuelta]=null;
+        if(n.inicFichas<2){
+          // El otro jugador también tiene que elegir su ficha
+          n.turno=1-ji;
+          n.estado='elegir_ini';
+        } else {
+          // Ambos eligieron. El primer canje lo hace el jugador original
+          // (el que eligió primero, que es 1-ji porque ji fue el último)
+          const primero=1-ji;
+          // Si el primero tiene salteos, los consume y empieza el otro
+          if(n.saltear[primero]>0){
+            n.saltear[primero]--;
+            n.log.push({tipo:'info',txt:`⚠ ${nom(primero)} pierde su turno`});
+            n.turno=ji;
+            n.estado=n.proxEstado[ji]||'canje';
+            n.proxEstado[ji]=null;
+          } else {
+            n.turno=primero;
+            n.estado=n.proxEstado[primero]||'canje';
+            n.proxEstado[primero]=null;
+          }
         }
+
+      } else if(n.estado==='elegir'){
+        // Mid-game: eligió su ficha, usar siguienteTurno para pasar
+        siguienteTurno(n);
       }
     });
   };
@@ -607,43 +673,7 @@ function Game({j1,j2,eqIds,modo,empieza,miRol,salaId,estadoInicial,onBack}){
     });
   };
 
-  const avanzarTurno=n=>{
-    const ji=n.turno,fi=n.f[ji],otro=1-ji;
-    const eaL=eaDeN(n);
-
-    // 1. Determinar proxAccion de ji (qué hace cuando vuelva a jugar)
-    if(fi.length===0){
-      n.proxAccion[ji]='elegir';
-    }else{
-      const cjs=getCanjes(eaL,fi);
-      if(cjs.length===0){
-        n.log.push({tipo:'info',txt:`⚠ ${nom(ji)} sin canjes — pierde un turno`});
-        n.turnosPerdidos[ji]=1;  // saltear el próximo turno de ji
-        n.proxAccion[ji]='elegir'; // cuando vuelva después del salteo, elige ficha
-      }else if(esPuntoMuerto(eaL,fi,cjs)){
-        n.log.push({tipo:'info',txt:`⚠ ${nom(ji)} en punto muerto — canje obligado`});
-        n.proxAccion[ji]='elegir';
-      }else{
-        n.proxAccion[ji]=null;
-      }
-    }
-
-    // 2. Pasar SIEMPRE al otro primero
-    n.turno=otro;
-    n.estado=n.proxAccion[otro]||'canje';
-    n.proxAccion[otro]=null;
-
-    // 3. Si ese otro tiene turno perdido, lo saltea y vuelve a ji
-    if(n.turnosPerdidos[n.turno]>0){
-      n.turnosPerdidos[n.turno]=0;
-      n.log.push({tipo:'info',txt:`⚠ ${nom(n.turno)} pierde su turno`});
-      // Volver a ji
-      const vueltaA=1-n.turno;
-      n.turno=vueltaA;
-      n.estado=n.proxAccion[vueltaA]||'canje';
-      n.proxAccion[vueltaA]=null;
-    }
-  };
+  const avanzarTurno=n=>siguienteTurno(n);
 
   const terminarTurno=()=>{
     if(online&&bloqueado)return;
@@ -684,6 +714,7 @@ function Game({j1,j2,eqIds,modo,empieza,miRol,salaId,estadoInicial,onBack}){
     if(G.fin)return null;
     const esYo=!online||miRol===t;
     const n=nom(t);
+    if(G.estado==='elegir_ini')return online&&miRol!==G.turno?`Esperando que ${nom(G.turno)} elija ficha...`:`${nom(G.turno)}: elegí tu ficha inicial`;
     if(G.estado==='elegir_j1')return online&&miRol!==0?`Esperando que ${nom(0)} elija ficha...`:`${nom(0)}: elegí tu ficha inicial`;
     if(G.estado==='elegir_j2')return online&&miRol!==1?`Esperando que ${nom(1)} elija ficha...`:`${nom(1)}: elegí tu ficha inicial`;
     if(G.estado==='elegir')return esYo?`${n}: elegí una ficha`:`Esperando a ${n}...`;
@@ -861,7 +892,7 @@ function Game({j1,j2,eqIds,modo,empieza,miRol,salaId,estadoInicial,onBack}){
           ))}
         </div>
       )}
-      {(G.estado==='elegir_j1'||G.estado==='elegir_j2'||G.estado==='elegir')&&(
+      {(G.estado==='elegir_ini'||G.estado==='elegir_j1'||G.estado==='elegir_j2'||G.estado==='elegir')&&(
         <div>
           <div style={{fontSize:11,color:'#7a7570',marginBottom:10}}>Elegí una ficha:</div>
           <div style={{display:'flex',gap:14,justifyContent:'center',flexWrap:'wrap'}}>
