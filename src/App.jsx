@@ -191,14 +191,18 @@ function normalizarG(g){
   }
 }
 
-function nuevoG(j1,j2,eqIds,modo='completa'){
+function nuevoG(j1,j2,eqIds,modo='completa',empieza='azar'){
   const pool=shuf(tarjetasParaModo(modo));
   const n=pool.length,pila=Math.floor(n/4),extra=n%4;
   const mons=[];let idx=0;
   for(let i=0;i<4;i++){const sz=pila+(i<extra?1:0);mons.push(pool.slice(idx,idx+sz));idx+=sz;}
+  let primerCanje=0;
+  if(empieza==='azar') primerCanje=Math.random()<0.5?0:1;
+  else if(empieza==='j2') primerCanje=1;
   return{j1,j2,eqIds:eqIds.map(Number),modo,mons,
     turno:0,f:[[],[]],pts:[0,0],fase:1,monVacios:0,
-    estado:'elegir_j1',proxAccion:[null,null],turnosPerdidos:[0,0],
+    estado:'elegir_j1',primerCanje,
+    proxAccion:[null,null],turnosPerdidos:[0,0],
     log:[],fin:false};
 }
 
@@ -340,7 +344,7 @@ function Espera({codigo,miRol,onBack}){
     if(!sala?.j2)return;
     const ids=(Array.isArray(sala.eqIds)?sala.eqIds:Object.values(sala.eqIds||{})).map(Number);
     if(!ids.length)return;
-    const g=nuevoG(sala.j1,sala.j2,ids,sala.modo||'completa');
+    const g=nuevoG(sala.j1,sala.j2,ids,sala.modo||'completa',sala.empieza||'azar');
     // Un solo set atómico con todo lo necesario
     set(ref(db,`salas/${codigo}`),{
       ...sala,
@@ -395,6 +399,7 @@ function Setup({online,onStart,onBack}){
   const [j2,setJ2]=useState('Jugador 2');
   const [sel,setSel]=useState([]);
   const [modo,setModo]=useState('completa');
+  const [empieza,setEmpieza]=useState('azar');
   const tog=id=>setSel(p=>p.includes(id)?p.filter(x=>x!==id):p.length>=2?p:[...p,id]);
   const ok=sel.length===2;
   const inp={width:'100%',padding:'9px 10px',border:'1.5px solid #d4cfc9',borderRadius:7,fontSize:15,fontFamily:'inherit',boxSizing:'border-box',background:'white'};
@@ -424,7 +429,15 @@ function Setup({online,onStart,onBack}){
               </div>
             ))}
           </div>
-          <button onClick={()=>ok&&onStart(j1,j2,sel,modo)}
+          <div style={{fontSize:10,fontWeight:700,letterSpacing:1,textTransform:'uppercase',color:'#7a7570',marginBottom:6}}>¿Quién empieza?</div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:6,marginBottom:14}}>
+            {[['azar','🎲 Azar'],['j1','Jugador 1'],['j2','Jugador 2']].map(([key,lbl])=>(
+              <div key={key} onClick={()=>setEmpieza(key)} style={{background:empieza===key?'#fff5f5':'white',border:`2px solid ${empieza===key?'#c0392b':'#d4cfc9'}`,borderRadius:8,padding:'8px 6px',cursor:'pointer',textAlign:'center'}}>
+                <div style={{fontWeight:700,fontSize:12,color:empieza===key?'#c0392b':'#1c1c1c'}}>{lbl}</div>
+              </div>
+            ))}
+          </div>
+          <button onClick={()=>ok&&onStart(j1,j2,sel,modo,empieza)}
             style={{display:'block',width:'100%',padding:12,background:ok?'#c0392b':'#bbb',border:'none',borderRadius:8,color:'white',fontWeight:700,fontSize:15,cursor:ok?'pointer':'default'}}>
             {online?'CONTINUAR →':'JUGAR →'}
           </button>
@@ -459,9 +472,9 @@ function Setup({online,onStart,onBack}){
 }
 
 // ── JUEGO ──
-function Game({j1,j2,eqIds,modo,miRol,salaId,estadoInicial,onBack}){
+function Game({j1,j2,eqIds,modo,empieza,miRol,salaId,estadoInicial,onBack}){
   const online=!!salaId;
-  const [G,setGLocal]=useState(()=>estadoInicial?normalizarG(estadoInicial):nuevoG(j1,j2,eqIds,modo));
+  const [G,setGLocal]=useState(()=>estadoInicial?normalizarG(estadoInicial):nuevoG(j1,j2,eqIds,modo,empieza||'azar'));
   const [modalCanje,setModalCanje]=useState(false);
   const [canjesDisp,setCanjesDisp]=useState([]);
   const escribiendoRef=useRef(false);
@@ -529,20 +542,55 @@ function Game({j1,j2,eqIds,modo,miRol,salaId,estadoInicial,onBack}){
   const elegirFicha=color=>{
     if(online&&bloqueado)return;
     upd(n=>{
-      n.f[n.turno].push(color);
-      n.log.push({tipo:'ficha',jugador:n.turno,color});
-      if(n.f[n.turno].length>10){n.estado='sacar';return;}
+      const ji=n.turno;
+      n.f[ji].push(color);
+      n.log.push({tipo:'ficha',jugador:ji,color});
+      if(n.f[ji].length>10){n.estado='sacar';return;}
+
       if(n.estado==='elegir_j1'){
+        // J1 eligió → verificar canjes, luego J2 elige
+        const eaL=eaDeN(n);
+        if(getCanjes(eaL,n.f[0]).length===0){
+          n.log.push({tipo:'info',txt:`⚠ ${nom(0)} sin canjes — pierde un turno`});
+          n.turnosPerdidos[0]=1;n.proxAccion[0]='elegir';
+        }
         n.turno=1;n.estado='elegir_j2';
+
       }else if(n.estado==='elegir_j2'){
-        n.turno=0;n.estado='canje';
+        // J2 eligió → verificar canjes, luego arrancar
+        const eaL=eaDeN(n);
+        if(getCanjes(eaL,n.f[1]).length===0){
+          n.log.push({tipo:'info',txt:`⚠ ${nom(1)} sin canjes — pierde un turno`});
+          n.turnosPerdidos[1]=1;n.proxAccion[1]='elegir';
+        }
+        // El primer turno de canje va al jugador con turno=n.turno guardado en el estado inicial
+        // (nuevoG ya guardó primerTurno=0 o 1 en n.turno antes de settear estado)
+        // Pero ahora n.turno=1 porque J2 acaba de elegir. Usar n.primerCanje si existe.
+        const primero=n.primerCanje!==undefined?n.primerCanje:0;
+        if(n.turnosPerdidos[primero]>0){
+          n.turnosPerdidos[primero]=0;
+          n.log.push({tipo:'info',txt:`⚠ ${nom(primero)} pierde su turno`});
+          const otro=1-primero;
+          n.turno=otro;n.estado=n.proxAccion[otro]||'canje';n.proxAccion[otro]=null;
+        }else{
+          n.turno=primero;n.estado='canje';
+        }
+
       }else if(n.estado==='elegir'){
-        // Jugador eligió ficha → pasa al otro normalmente
-        // El turno perdido ya fue contado cuando se detectó, no acá
-        const otro=1-n.turno;
+        // Excepción mid-game: elegir ficha → pasar al otro
+        const otro=1-ji;
         n.turno=otro;
         n.estado=n.proxAccion[otro]||'canje';
         n.proxAccion[otro]=null;
+        // Si el otro también tiene turno perdido, lo saltea
+        if(n.turnosPerdidos[n.turno]>0){
+          n.turnosPerdidos[n.turno]=0;
+          n.log.push({tipo:'info',txt:`⚠ ${nom(n.turno)} pierde su turno`});
+          const vuelta=1-n.turno;
+          n.turno=vuelta;
+          n.estado=n.proxAccion[vuelta]||'canje';
+          n.proxAccion[vuelta]=null;
+        }
       }
     });
   };
@@ -608,7 +656,7 @@ function Game({j1,j2,eqIds,modo,miRol,salaId,estadoInicial,onBack}){
       const ji=n.turno,sob=n.f[ji].length-obj.t.f.length;
       const pts=calcPts(obj.t.com,sob,n.fase===2);
       n.pts[ji]+=pts;n.f[ji]=aplica(n.f[ji],obj.t.f,[]);
-      n.log.push({tipo:'punto',jugador:ji,pts,sob,com:obj.t.com});
+      n.log.push({tipo:'punto',jugador:ji,pts,sob,com:obj.t.com,tObj:obj.t});
       const mi=n.mons.findIndex(m=>m.length>0&&m[m.length-1].id===obj.t.id);
       if(mi>=0){
         n.mons[mi].pop();
@@ -716,22 +764,69 @@ function Game({j1,j2,eqIds,modo,miRol,salaId,estadoInicial,onBack}){
     </div>
   );
 
-  const PanelHist=({max=14})=>(
-    <div style={{background:'white',borderRadius:10,padding:'10px 12px',border:'1.5px solid #e8e3de',flex:1,minHeight:0,overflowY:'auto'}}>
-      <div style={{fontSize:8,fontWeight:700,letterSpacing:1.5,textTransform:'uppercase',color:'#aaa',marginBottom:6}}>Historial</div>
-      {(!glog||glog.length===0)
-        ?<div style={{fontSize:11,color:'#bbb',fontStyle:'italic'}}>Sin movimientos aún.</div>
-        :glog.slice(-max).reverse().map((e,i)=>{
-          const row={padding:'4px 0',borderBottom:'1px solid #f0ede8',display:'flex',alignItems:'center',gap:4,flexWrap:'wrap'};
-          if(!e||typeof e==='string')return<div key={i} style={{...row,fontSize:11,color:'#555'}}>{e}</div>;
-          if(e.tipo==='info')return<div key={i} style={{...row,fontSize:10,color:'#e67e22'}}>{e.txt}</div>;
-          if(e.tipo==='punto')return<div key={i} style={row}><span style={{fontSize:11,fontWeight:700,color:'#27ae60'}}>{nom(e.jugador)}</span><span style={{fontSize:11,color:'#27ae60'}}>+{e.pts}pts{e.com?' ★':''}</span><span style={{fontSize:10,color:'#aaa'}}>({e.sob} sob.)</span></div>;
-          if(e.tipo==='ficha')return<div key={i} style={row}><span style={{fontSize:11,fontWeight:600,color:'#555'}}>{nom(e.jugador)}</span><span style={{fontSize:10,color:'#aaa'}}>elige</span><Dot color={e.color} size={13}/></div>;
-          if(e.tipo==='canje')return<div key={i} style={row}><span style={{fontSize:11,fontWeight:600,color:'#555'}}>{nom(e.jugador)}</span><FRow arr={e.de} size={13}/><span style={{color:'#888',fontWeight:700,fontSize:12}}>→</span><FRow arr={e.por} size={13}/><span style={{fontSize:9,color:'#bbb'}}>(T.{e.eqId})</span></div>;
-          return null;
-        })}
-    </div>
-  );
+  const [verCanjeadas,setVerCanjeadas]=useState(false);
+
+  const PanelHist=({max=14})=>{
+    const canjeadas=glog.filter(e=>e&&e.tipo==='punto');
+    return(
+      <div style={{background:'white',borderRadius:10,padding:'10px 12px',border:'1.5px solid #e8e3de',flex:1,minHeight:0,overflowY:'auto'}}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:6}}>
+          <div style={{fontSize:8,fontWeight:700,letterSpacing:1.5,textTransform:'uppercase',color:'#aaa'}}>Historial</div>
+          {canjeadas.length>0&&(
+            <button onClick={()=>setVerCanjeadas(v=>!v)}
+              style={{fontSize:9,background:'#f0ede8',border:'1px solid #d4cfc9',borderRadius:5,padding:'2px 7px',cursor:'pointer',color:'#555'}}>
+              {verCanjeadas?'← Historial':`🏆 Tarjetas (${canjeadas.length})`}
+            </button>
+          )}
+        </div>
+        {verCanjeadas?(
+          // Vista de tarjetas canjeadas
+          <div>
+            {[0,1].map(ji=>{
+              const pts=G.pts[ji];
+              const tarj=canjeadas.filter(e=>e.jugador===ji);
+              return(
+                <div key={ji} style={{marginBottom:10}}>
+                  <div style={{fontSize:10,fontWeight:700,color:'#555',marginBottom:4,display:'flex',justifyContent:'space-between'}}>
+                    <span>{nom(ji)}</span>
+                    <span style={{color:'#e67e22',fontWeight:800}}>{pts} pts</span>
+                  </div>
+                  {tarj.length===0?<div style={{fontSize:10,color:'#bbb',fontStyle:'italic'}}>Sin tarjetas aún</div>:
+                  tarj.map((e,i)=>(
+                    <div key={i} style={{display:'flex',alignItems:'center',gap:6,padding:'3px 0',borderBottom:'1px solid #f5f3f0'}}>
+                      {e.tObj&&<TObj t={e.tObj} sz={11}/>}
+                      <span style={{fontSize:11,color:'#27ae60',fontWeight:700}}>+{e.pts}pts{e.com?' ★':''}</span>
+                      <span style={{fontSize:10,color:'#aaa'}}>{e.sob} sob.</span>
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+        ):(
+          // Vista de historial normal
+          (!glog||glog.length===0)
+            ?<div style={{fontSize:11,color:'#bbb',fontStyle:'italic'}}>Sin movimientos aún.</div>
+            :glog.slice(-max).reverse().map((e,i)=>{
+              const row={padding:'4px 0',borderBottom:'1px solid #f0ede8',display:'flex',alignItems:'center',gap:4,flexWrap:'wrap'};
+              if(!e||typeof e==='string')return<div key={i} style={{...row,fontSize:11,color:'#555'}}>{e}</div>;
+              if(e.tipo==='info')return<div key={i} style={{...row,fontSize:10,color:'#e67e22'}}>{e.txt}</div>;
+              if(e.tipo==='punto')return(
+                <div key={i} style={row}>
+                  <span style={{fontSize:11,fontWeight:700,color:'#27ae60'}}>{nom(e.jugador)}</span>
+                  {e.tObj&&<TObj t={e.tObj} sz={11}/>}
+                  <span style={{fontSize:11,color:'#27ae60'}}>+{e.pts}pts{e.com?' ★':''}</span>
+                  <span style={{fontSize:10,color:'#aaa'}}>({e.sob} sob.)</span>
+                </div>
+              );
+              if(e.tipo==='ficha')return<div key={i} style={row}><span style={{fontSize:11,fontWeight:600,color:'#555'}}>{nom(e.jugador)}</span><span style={{fontSize:10,color:'#aaa'}}>elige</span><Dot color={e.color} size={13}/></div>;
+              if(e.tipo==='canje')return<div key={i} style={row}><span style={{fontSize:11,fontWeight:600,color:'#555'}}>{nom(e.jugador)}</span><FRow arr={e.de} size={13}/><span style={{color:'#888',fontWeight:700,fontSize:12}}>→</span><FRow arr={e.por} size={13}/><span style={{fontSize:9,color:'#bbb'}}>(T.{e.eqId})</span></div>;
+              return null;
+            })
+        )}
+      </div>
+    );
+  };
 
   const PanelJugadores=({dotSz=24})=>(
     <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
@@ -769,16 +864,15 @@ function Game({j1,j2,eqIds,modo,miRol,salaId,estadoInicial,onBack}){
       {(G.estado==='elegir_j1'||G.estado==='elegir_j2'||G.estado==='elegir')&&(
         <div>
           <div style={{fontSize:11,color:'#7a7570',marginBottom:10}}>Elegí una ficha:</div>
-          <div style={{display:'flex',gap:12,justifyContent:'center',flexWrap:'wrap'}}>
+          <div style={{display:'flex',gap:14,justifyContent:'center',flexWrap:'wrap'}}>
             {COLS.map(col=>(
               <button key={col} onClick={()=>elegirFicha(col)}
-                style={{background:'white',border:`3px solid ${CHX[col]}`,borderRadius:'50%',
-                  width:isPC?64:52,height:isPC?64:52,cursor:'pointer',padding:0,
-                  display:'flex',alignItems:'center',justifyContent:'center',
-                  boxShadow:`0 2px 8px ${CHX[col]}55`,transition:'transform 0.1s'}}
-                onMouseEnter={e=>e.currentTarget.style.transform='scale(1.12)'}
+                style={{background:'none',border:'none',cursor:'pointer',padding:4,borderRadius:'50%',
+                  display:'flex',alignItems:'center',justifyContent:'center',transition:'transform 0.1s'}}
+                onMouseEnter={e=>e.currentTarget.style.transform='scale(1.18)'}
                 onMouseLeave={e=>e.currentTarget.style.transform='scale(1)'}>
-                <div style={{width:isPC?44:34,height:isPC?44:34,borderRadius:'50%',background:CHX[col]}}/>
+                <div style={{width:isPC?56:46,height:isPC?56:46,borderRadius:'50%',background:CHX[col],
+                  boxShadow:`0 3px 10px ${CHX[col]}88`}}/>
               </button>
             ))}
           </div>
@@ -880,6 +974,37 @@ function Game({j1,j2,eqIds,modo,miRol,salaId,estadoInicial,onBack}){
     </div>
   ):null;
 
+  const TablaPuntos=()=>(
+    <div style={{background:'white',borderRadius:10,padding:'10px 14px',border:'1.5px solid #e8e3de',flexShrink:0}}>
+      <div style={{fontSize:8,fontWeight:700,letterSpacing:1.5,textTransform:'uppercase',color:'#aaa',marginBottom:8}}>Tabla de puntajes</div>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+        {[
+          {label:'Fase 1',com:false,pts:[5,3,2,1]},
+          {label:'Fase 1 ★',com:true,pts:[8,5,3,2]},
+          {label:'Fase 2',com:false,pts:[8,5,3,2]},
+          {label:'Fase 2 ★',com:true,pts:[12,8,5,3]},
+        ].map((f,i)=>(
+          <div key={i} style={{background:f.com?'#2a2a2a':'#f8f8f8',borderRadius:8,padding:'7px 10px',border:`1px solid ${f.com?'#555':'#e0dbd6'}`}}>
+            <div style={{fontSize:9,fontWeight:700,color:f.com?'#ccc':'#555',marginBottom:5,display:'flex',alignItems:'center',gap:4}}>
+              {G.fase===2&&f.label.startsWith('Fase 2')||G.fase===1&&f.label.startsWith('Fase 1')
+                ?<span style={{width:6,height:6,borderRadius:'50%',background:'#e67e22',display:'inline-block'}}/>
+                :null}
+              {f.label}
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:2}}>
+              {f.pts.map((p,j)=>(
+                <div key={j} style={{textAlign:'center'}}>
+                  <div style={{fontSize:7,color:f.com?'#888':'#aaa'}}>{j===0?'0':j===1?'1':j===2?'2':'3+'}sob</div>
+                  <div style={{fontSize:13,fontWeight:800,color:f.com?'#f0a500':'#c0392b'}}>{p}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
   // ── LAYOUT PC ──
   if(isPC) return(
     <div style={{height:'100vh',background:'#f0ede8',fontFamily:'system-ui,sans-serif',display:'flex',flexDirection:'column',overflow:'hidden'}}>
@@ -889,12 +1014,17 @@ function Game({j1,j2,eqIds,modo,miRol,salaId,estadoInicial,onBack}){
           <PanelEq sz={36}/>
           <PanelHist max={24}/>
         </div>
-        <div style={{padding:'14px 16px',display:'flex',flexDirection:'column',gap:12,overflowY:'auto'}}>
-          <PanelPilas sz={20} grid={true}/>
-          <TurnoBox/>
-          <PanelJugadores dotSz={40}/>
-          {!G.fin&&!bloqueado&&<Acciones/>}
-          {G.fin&&<Fin/>}
+        <div style={{padding:'14px 16px',display:'flex',flexDirection:'column',gap:12,overflow:'hidden'}}>
+          {/* Zona scrolleable */}
+          <div style={{flex:1,overflowY:'auto',display:'flex',flexDirection:'column',gap:12}}>
+            <PanelPilas sz={20} grid={true}/>
+            <TurnoBox/>
+            <PanelJugadores dotSz={40}/>
+            {!G.fin&&!bloqueado&&<Acciones/>}
+            {G.fin&&<Fin/>}
+          </div>
+          {/* Tabla de puntajes fija abajo */}
+          <TablaPuntos/>
         </div>
       </div>
       <Modal/>
@@ -926,11 +1056,11 @@ export default function App(){
 
   if(pant==='setup-local') return(
     <Setup online={false}
-      onStart={(j1,j2,sel,modo)=>{setData({j1,j2,sel,modo});setPant('game-local');}}
+      onStart={(j1,j2,sel,modo,empieza)=>{setData({j1,j2,sel,modo,empieza});setPant('game-local');}}
       onBack={()=>setPant('menu')}/>
   );
   if(pant==='game-local'&&data) return(
-    <Game j1={data.j1} j2={data.j2} eqIds={data.sel} modo={data.modo}
+    <Game j1={data.j1} j2={data.j2} eqIds={data.sel} modo={data.modo} empieza={data.empieza||'azar'}
       miRol={-1} salaId={null} estadoInicial={null} onBack={()=>setPant('menu')}/>
   );
 
@@ -944,11 +1074,11 @@ export default function App(){
   );
   if(pant==='setup-online') return(
     <Setup online={true}
-      onStart={(j1,j2,sel,modo)=>{
-        // Guardar eqIds y modo en Firebase para J2, ANTES de ir a espera
+      onStart={(j1,j2,sel,modo,empieza)=>{
         set(ref(db,`salas/${data.codigo}/eqIds`),sel.map(Number));
         set(ref(db,`salas/${data.codigo}/modo`),modo);
-        setData(d=>({...d,sel,modo}));
+        set(ref(db,`salas/${data.codigo}/empieza`),empieza||'azar');
+        setData(d=>({...d,sel,modo,empieza}));
         setPant('espera');
       }}
       onBack={()=>setPant('lobby')}/>
