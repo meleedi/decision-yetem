@@ -657,8 +657,9 @@ function Game({j1,j2,eqIds,modo,empieza,miRol,salaId,estadoInicial,onBack}){
         }
 
       } else if(n.estado==='elegir'){
-        // Mid-game: eligió ficha, terminar su turno y pasar
-        terminarTurnoDeJugador(n, ji);
+        // Eligió ficha nueva — pasar turno al otro sin evaluar canjes
+        // (se evaluarán cuando ese jugador TERMINE su próximo turno)
+        darTurno(n, 1-ji);
       }
     });
   };
