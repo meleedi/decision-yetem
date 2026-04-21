@@ -375,8 +375,13 @@ function Lobby({onJoin,onBack}){
     if(!nombre.trim()){setError('Ingresá tu nombre');return;}
     setCargando(true);
     const cod=codigoAleatorio();
-    await set(ref(db,`salas/${cod}`),{j1:nombre.trim(),j2:null,estado:'esperando',creado:Date.now()});
-    onJoin(cod,nombre.trim(),0);
+    const u=auth.currentUser;
+    await set(ref(db,`salas/${cod}`),{
+      j1:nombre.trim(),j2:null,
+      uid1:u?.uid||null,
+      estado:'esperando',creado:Date.now()
+    });
+    onJoin(cod,nombre.trim(),0,u?.uid||null);
   };
 
   const unirse=async()=>{
@@ -384,14 +389,16 @@ function Lobby({onJoin,onBack}){
     if(!codigo.trim()){setError('Ingresá el código');return;}
     setCargando(true);
     const cod=codigo.trim().toUpperCase();
+    const u=auth.currentUser;
     onValue(ref(db,`salas/${cod}`),(snap)=>{
       off(ref(db,`salas/${cod}`));
       const sala=snap.val();
       if(!sala){setError('Sala no encontrada');setCargando(false);return;}
       if(sala.estado!=='esperando'){setError('La sala ya está en juego');setCargando(false);return;}
       set(ref(db,`salas/${cod}/j2`),nombre.trim());
+      set(ref(db,`salas/${cod}/uid2`),u?.uid||null);
       set(ref(db,`salas/${cod}/estado`),'listo');
-      onJoin(cod,nombre.trim(),1);
+      onJoin(cod,nombre.trim(),1,u?.uid||null);
     },{onlyOnce:true});
   };
 
@@ -449,7 +456,7 @@ function Espera({codigo,miRol,onBack}){
         const gs=deserializarG(s.gameState);
         if(gs){
           const ids=(Array.isArray(s.eqIds)?s.eqIds:Object.values(s.eqIds||{})).map(Number);
-          setListo({j1:s.j1,j2:s.j2,gameState:gs,eqIds:ids,modo:s.modo||'completa'});
+          setListo({j1:s.j1,j2:s.j2,gameState:gs,eqIds:ids,modo:s.modo||'completa',uid1:s.uid1||null,uid2:s.uid2||null});
         }
       }
     });
@@ -473,6 +480,7 @@ function Espera({codigo,miRol,onBack}){
     return(
       <Game j1={listo.j1} j2={listo.j2} eqIds={listo.eqIds} modo={listo.modo}
         miRol={miRol} salaId={codigo} estadoInicial={listo.gameState}
+        uid1={listo.uid1||null} uid2={listo.uid2||null}
         onBack={onBack}/>
     );
   }
@@ -588,13 +596,34 @@ function Setup({online,onStart,onBack}){
 }
 
 // ── JUEGO ──
-function Game({j1,j2,eqIds,modo,empieza,miRol,salaId,estadoInicial,onBack}){
+function Game({j1,j2,eqIds,modo,empieza,miRol,salaId,estadoInicial,onBack,uid1,uid2}){
   const online=!!salaId;
   const [G,setGLocal]=useState(()=>estadoInicial?normalizarG(estadoInicial):nuevoG(j1,j2,eqIds,modo,empieza||'azar'));
   const [modalCanje,setModalCanje]=useState(false);
   const [canjesDisp,setCanjesDisp]=useState([]);
   const escribiendoRef=useRef(false);
+  const partidaGuardadaRef=useRef(false);
   const isPC=window.innerWidth>=900;
+
+  // Guardar partida en Firestore cuando termina (solo online, solo una vez)
+  useEffect(()=>{
+    if(!G.fin||!online||partidaGuardadaRef.current)return;
+    partidaGuardadaRef.current=true;
+    const ganador=G.pts[0]>G.pts[1]?0:G.pts[1]>G.pts[0]?1:-1; // -1 empate
+    const partida={
+      fecha:Date.now(),
+      modo:G.modo||modo,
+      j1:{nombre:G.j1,uid:uid1||null,pts:G.pts[0]},
+      j2:{nombre:G.j2,uid:uid2||null,pts:G.pts[1]},
+      ganador,  // 0, 1, o -1 (empate)
+      eqIds:G.eqIds||eqIds,
+      movimientos:G.log,  // historial completo
+      sala:salaId,
+    };
+    // Guardar en colección 'partidas'
+    const id=`${salaId}_${Date.now()}`;
+    setDoc(doc(fs,'partidas',id),partida).catch(e=>console.error('Error guardando partida:',e));
+  },[G.fin]);
 
   // Reconstruir ea siempre desde eqIds normalizados
   const eaIds=(Array.isArray(G.eqIds)?G.eqIds:Object.values(G.eqIds||{})).map(Number);
@@ -1194,8 +1223,8 @@ export default function App(){
 
   if(pant==='lobby') return(
     <Lobby
-      onJoin={(cod,nombre,rol)=>{
-        setData({codigo:cod,miNombre:nombre,miRol:rol});
+      onJoin={(cod,nombre,rol,uid)=>{
+        setData({codigo:cod,miNombre:nombre,miRol:rol,miUid:uid});
         setPant(rol===0?'setup-online':'espera');
       }}
       onBack={()=>setPant('menu')}/>
