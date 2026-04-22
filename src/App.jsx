@@ -364,75 +364,148 @@ function ElegirApodo({user,onListo}){
 }
 
 // ── LOBBY ──
-function Lobby({onJoin,onBack}){
-  const [modo,setModo]=useState('crear');
-  const [nombre,setNombre]=useState('');
+function Lobby({perfil,onJoin,onBack}){
+  const [modo,setModo]=useState('crear'); // 'crear' | 'unirse' | 'retomar'
   const [codigo,setCodigo]=useState('');
+  const [codigoRetomar,setCodigoRetomar]=useState('');
   const [error,setError]=useState('');
   const [cargando,setCargando]=useState(false);
+  const [partidasEnCurso,setPartidasEnCurso]=useState([]);
+  const nombre=perfil?.apodo||'';
+  const u=auth.currentUser;
+
+  // Buscar partidas en curso donde participa este usuario
+  useEffect(()=>{
+    if(!u)return;
+    // Buscar salas donde uid1 o uid2 == u.uid y estado == 'jugando'
+    onValue(ref(db,'salas'),(snap)=>{
+      const todas=snap.val()||{};
+      const mias=Object.entries(todas)
+        .filter(([,s])=>s.estado==='jugando'&&(s.uid1===u.uid||s.uid2===u.uid))
+        .map(([cod,s])=>({cod,j1:s.j1,j2:s.j2,uid1:s.uid1,uid2:s.uid2,eqIds:s.eqIds,modo:s.modo,gameState:s.gameState}));
+      setPartidasEnCurso(mias);
+    },{onlyOnce:true});
+  },[]);
 
   const crearSala=async()=>{
-    if(!nombre.trim()){setError('Ingresá tu nombre');return;}
+    if(!nombre){setError('No se encontró tu perfil');return;}
     setCargando(true);
     const cod=codigoAleatorio();
-    const u=auth.currentUser;
     await set(ref(db,`salas/${cod}`),{
-      j1:nombre.trim(),j2:null,
-      uid1:u?.uid||null,
-      estado:'esperando',creado:Date.now()
+      j1:nombre,j2:null,uid1:u?.uid||null,estado:'esperando',creado:Date.now()
     });
-    onJoin(cod,nombre.trim(),0,u?.uid||null);
+    onJoin(cod,nombre,0,u?.uid||null);
   };
 
   const unirse=async()=>{
-    if(!nombre.trim()){setError('Ingresá tu nombre');return;}
     if(!codigo.trim()){setError('Ingresá el código');return;}
     setCargando(true);
     const cod=codigo.trim().toUpperCase();
-    const u=auth.currentUser;
     onValue(ref(db,`salas/${cod}`),(snap)=>{
       off(ref(db,`salas/${cod}`));
       const sala=snap.val();
       if(!sala){setError('Sala no encontrada');setCargando(false);return;}
       if(sala.estado!=='esperando'){setError('La sala ya está en juego');setCargando(false);return;}
-      set(ref(db,`salas/${cod}/j2`),nombre.trim());
+      set(ref(db,`salas/${cod}/j2`),nombre);
       set(ref(db,`salas/${cod}/uid2`),u?.uid||null);
       set(ref(db,`salas/${cod}/estado`),'listo');
-      onJoin(cod,nombre.trim(),1,u?.uid||null);
+      onJoin(cod,nombre,1,u?.uid||null);
     },{onlyOnce:true});
   };
 
-  const sinp={width:'100%',padding:'10px 12px',border:'1.5px solid #d4cfc9',borderRadius:8,fontSize:15,fontFamily:'inherit',boxSizing:'border-box',background:'white',marginBottom:10};
+  const retomar=async(p)=>{
+    // Determinar rol: soy j1 o j2?
+    const rol=p.uid1===u?.uid?0:1;
+    onJoin(p.cod,nombre,rol,u?.uid||null,true); // true = retomar
+  };
+
+  const retomarPorCodigo=async()=>{
+    if(!codigoRetomar.trim()){setError('Ingresá el código');return;}
+    setCargando(true);
+    const cod=codigoRetomar.trim().toUpperCase();
+    onValue(ref(db,`salas/${cod}`),(snap)=>{
+      off(ref(db,`salas/${cod}`));
+      const sala=snap.val();
+      if(!sala){setError('Sala no encontrada');setCargando(false);return;}
+      if(sala.estado!=='jugando'){setError('Esa sala no está en curso');setCargando(false);return;}
+      const rol=sala.uid1===u?.uid?0:sala.uid2===u?.uid?1:-1;
+      if(rol===-1){setError('No sos parte de esa partida');setCargando(false);return;}
+      onJoin(cod,nombre,rol,u?.uid||null,true);
+    },{onlyOnce:true});
+  };
+
   const sbtn=(pri)=>({display:'block',width:'100%',padding:12,background:pri?'#c0392b':'white',border:`1.5px solid ${pri?'#c0392b':'#d4cfc9'}`,borderRadius:8,color:pri?'white':'#1c1c1c',fontWeight:700,fontSize:14,cursor:'pointer',marginBottom:8,fontFamily:'inherit'});
+  const sinp={width:'100%',padding:'10px 12px',border:'1.5px solid #d4cfc9',borderRadius:8,fontSize:16,fontFamily:'inherit',boxSizing:'border-box',background:'white',marginBottom:10,textTransform:'uppercase',letterSpacing:4,fontWeight:700,textAlign:'center'};
 
   return(
     <div style={{minHeight:'100vh',background:'#f0ede8',fontFamily:'system-ui,sans-serif',display:'flex',flexDirection:'column'}}>
-      <div style={{background:'#1a1a2e',padding:'12px 16px'}}>
+      <div style={{background:'#1a1a2e',padding:'12px 16px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
         <div style={{fontWeight:800,fontSize:22,color:'#e94560',letterSpacing:4}}>DECISIÓN</div>
-        <div style={{fontSize:9,color:'#8892a4',letterSpacing:3,marginTop:2}}>ONLINE</div>
+        <div style={{fontSize:12,color:'#8892a4'}}>Jugando como <span style={{color:'#f5a623',fontWeight:700}}>{nombre}</span></div>
       </div>
-      <div style={{flex:1,padding:16,display:'flex',flexDirection:'column',gap:12}}>
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
-          {['crear','unirse'].map(m=>(
-            <div key={m} onClick={()=>setModo(m)} style={{background:modo===m?'#fff5f5':'white',border:`2px solid ${modo===m?'#c0392b':'#d4cfc9'}`,borderRadius:9,padding:'12px',cursor:'pointer',textAlign:'center'}}>
-              <div style={{fontSize:20,marginBottom:4}}>{m==='crear'?'🆕':'🔗'}</div>
-              <div style={{fontWeight:700,fontSize:13,color:modo===m?'#c0392b':'#1c1c1c'}}>{m==='crear'?'Crear sala':'Unirse'}</div>
+      <div style={{flex:1,padding:16,display:'flex',flexDirection:'column',gap:12,maxWidth:440,margin:'0 auto',width:'100%'}}>
+
+        {/* Tabs */}
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:6}}>
+          {[['crear','🆕 Nueva'],['unirse','🔗 Unirse'],['retomar','🔄 Retomar']].map(([k,l])=>(
+            <div key={k} onClick={()=>{setModo(k);setError('');}} style={{background:modo===k?'#fff5f5':'white',border:`2px solid ${modo===k?'#c0392b':'#d4cfc9'}`,borderRadius:9,padding:'10px 6px',cursor:'pointer',textAlign:'center'}}>
+              <div style={{fontWeight:700,fontSize:12,color:modo===k?'#c0392b':'#1c1c1c'}}>{l}</div>
             </div>
           ))}
         </div>
-        <div style={{background:'white',border:'1.5px solid #d4cfc9',borderRadius:10,padding:14}}>
-          <div style={{fontSize:10,fontWeight:700,letterSpacing:1,textTransform:'uppercase',color:'#7a7570',marginBottom:4}}>Tu nombre</div>
-          <input value={nombre} onChange={e=>setNombre(e.target.value)} placeholder="Cómo te llamas" maxLength={14} style={sinp}/>
-          {modo==='unirse'&&(
+
+        <div style={{background:'white',border:'1.5px solid #d4cfc9',borderRadius:10,padding:16}}>
+          {error&&<div style={{color:'#c0392b',fontSize:12,marginBottom:10,padding:'6px 10px',background:'#fff5f5',borderRadius:6}}>{error}</div>}
+
+          {modo==='crear'&&(
             <>
-              <div style={{fontSize:10,fontWeight:700,letterSpacing:1,textTransform:'uppercase',color:'#7a7570',marginBottom:4}}>Código de sala</div>
-              <input value={codigo} onChange={e=>setCodigo(e.target.value.toUpperCase())} placeholder="Ej: XK4P2M" maxLength={6} style={{...sinp,textTransform:'uppercase',letterSpacing:4,fontSize:18,fontWeight:700,textAlign:'center'}}/>
+              <div style={{fontSize:13,color:'#7a7570',marginBottom:14,textAlign:'center'}}>
+                Creás la sala y le mandás el código a tu oponente.
+              </div>
+              <button onClick={crearSala} style={sbtn(true)} disabled={cargando}>
+                {cargando?'Creando...':'Crear sala →'}
+              </button>
             </>
           )}
-          {error&&<div style={{color:'#c0392b',fontSize:12,marginBottom:8}}>{error}</div>}
-          <button onClick={modo==='crear'?crearSala:unirse} style={sbtn(true)} disabled={cargando}>
-            {cargando?'Conectando...':(modo==='crear'?'Crear sala →':'Unirse →')}
-          </button>
+
+          {modo==='unirse'&&(
+            <>
+              <div style={{fontSize:10,fontWeight:700,letterSpacing:1,textTransform:'uppercase',color:'#7a7570',marginBottom:6}}>Código de sala</div>
+              <input value={codigo} onChange={e=>setCodigo(e.target.value.toUpperCase())} placeholder="XK4P2M" maxLength={6} style={sinp}/>
+              <button onClick={unirse} style={sbtn(true)} disabled={cargando}>
+                {cargando?'Conectando...':'Unirse →'}
+              </button>
+            </>
+          )}
+
+          {modo==='retomar'&&(
+            <>
+              {/* Partidas en curso de este usuario */}
+              {partidasEnCurso.length>0&&(
+                <div style={{marginBottom:14}}>
+                  <div style={{fontSize:10,fontWeight:700,letterSpacing:1,textTransform:'uppercase',color:'#7a7570',marginBottom:8}}>Tus partidas en curso</div>
+                  {partidasEnCurso.map(p=>(
+                    <div key={p.cod} onClick={()=>retomar(p)} style={{background:'#f8f8f8',border:'1.5px solid #d4cfc9',borderRadius:8,padding:'10px 12px',marginBottom:6,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                      <div>
+                        <div style={{fontWeight:700,fontSize:13}}>{p.j1} vs {p.j2}</div>
+                        <div style={{fontSize:10,color:'#aaa',marginTop:2}}>Sala: {p.cod} · {p.modo||'completa'}</div>
+                      </div>
+                      <span style={{color:'#c0392b',fontWeight:700,fontSize:12}}>Retomar →</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {/* O ingresar código manualmente */}
+              <div style={{fontSize:10,fontWeight:700,letterSpacing:1,textTransform:'uppercase',color:'#7a7570',marginBottom:6}}>
+                {partidasEnCurso.length>0?'O ingresá el código':'Ingresá el código de sala'}
+              </div>
+              <input value={codigoRetomar} onChange={e=>setCodigoRetomar(e.target.value.toUpperCase())} placeholder="XK4P2M" maxLength={6} style={sinp}/>
+              <button onClick={retomarPorCodigo} style={sbtn(true)} disabled={cargando}>
+                {cargando?'Buscando...':'Retomar partida →'}
+              </button>
+            </>
+          )}
+
           <button onClick={onBack} style={sbtn(false)}>← Volver</button>
         </div>
       </div>
@@ -1195,6 +1268,73 @@ function Game({j1,j2,eqIds,modo,empieza,miRol,salaId,estadoInicial,onBack,uid1,u
   );
 }
 
+// ── MIS PARTIDAS ──
+function MisPartidas({perfil,onBack}){
+  const [partidas,setPartidas]=useState(null);
+  const u=auth.currentUser;
+
+  useEffect(()=>{
+    if(!u)return;
+    // Buscar en Firestore partidas donde uid1 o uid2 == u.uid
+    const cargar=async()=>{
+      const {getDocs,collection,query,where,orderBy,limit}=await import('firebase/firestore');
+      // Buscar como j1
+      const q1=query(collection(fs,'partidas'),where('j1.uid','==',u.uid),orderBy('fecha','desc'),limit(20));
+      const q2=query(collection(fs,'partidas'),where('j2.uid','==',u.uid),orderBy('fecha','desc'),limit(20));
+      const [s1,s2]=await Promise.all([getDocs(q1),getDocs(q2)]);
+      const todas=[...s1.docs,...s2.docs]
+        .map(d=>({id:d.id,...d.data()}))
+        .sort((a,b)=>b.fecha-a.fecha)
+        .slice(0,30);
+      setPartidas(todas);
+    };
+    cargar().catch(()=>setPartidas([]));
+  },[]);
+
+  const fmtFecha=ts=>{
+    const d=new Date(ts);
+    return d.toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'});
+  };
+
+  return(
+    <div style={{minHeight:'100vh',background:'#f0ede8',fontFamily:'system-ui,sans-serif',display:'flex',flexDirection:'column'}}>
+      <div style={{background:'#1a1a2e',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
+        <button onClick={onBack} style={{background:'transparent',border:'none',color:'#8892a4',fontSize:18,cursor:'pointer',padding:0}}>←</button>
+        <div style={{fontWeight:800,fontSize:18,color:'#e94560',letterSpacing:3}}>MIS PARTIDAS</div>
+      </div>
+      <div style={{flex:1,padding:14,maxWidth:600,margin:'0 auto',width:'100%'}}>
+        {partidas===null&&<div style={{textAlign:'center',color:'#aaa',marginTop:40}}>Cargando...</div>}
+        {partidas&&partidas.length===0&&<div style={{textAlign:'center',color:'#aaa',marginTop:40,fontSize:13}}>Todavía no jugaste ninguna partida online.</div>}
+        {partidas&&partidas.map(p=>{
+          const soiJ1=p.j1?.uid===u?.uid;
+          const yo=soiJ1?p.j1:p.j2;
+          const oponente=soiJ1?p.j2:p.j1;
+          const gane=p.ganador===(soiJ1?0:1);
+          const empate=p.ganador===-1;
+          return(
+            <div key={p.id} style={{background:'white',border:`1.5px solid ${gane?'#27ae60':empate?'#e67e22':'#e74c3c'}`,borderRadius:10,padding:'12px 14px',marginBottom:8}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
+                <div style={{fontWeight:700,fontSize:13,color:gane?'#27ae60':empate?'#e67e22':'#e74c3c'}}>
+                  {empate?'Empate':gane?'Victoria':'Derrota'}
+                </div>
+                <div style={{fontSize:10,color:'#aaa'}}>{fmtFecha(p.fecha)}</div>
+              </div>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                <div style={{fontSize:14,fontWeight:600}}>{yo?.nombre} <span style={{color:'#e67e22',fontWeight:800}}>{yo?.pts}</span></div>
+                <div style={{fontSize:11,color:'#aaa'}}>vs</div>
+                <div style={{fontSize:14,fontWeight:600}}><span style={{color:'#7a7570',fontWeight:800}}>{oponente?.pts}</span> {oponente?.nombre}</div>
+              </div>
+              <div style={{fontSize:10,color:'#bbb',marginTop:4}}>
+                Modo {p.modo||'completa'} · {p.movimientos?.filter(m=>m?.tipo==='punto').length||0} tarjetas ganadas
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ── APP ──
 export default function App(){
   const {user,perfil,setPerfil}=useAuth();
@@ -1223,9 +1363,11 @@ export default function App(){
 
   if(pant==='lobby') return(
     <Lobby
-      onJoin={(cod,nombre,rol,uid)=>{
+      perfil={perfil}
+      onJoin={(cod,nombre,rol,uid,retomar)=>{
         setData({codigo:cod,miNombre:nombre,miRol:rol,miUid:uid});
-        setPant(rol===0?'setup-online':'espera');
+        if(retomar) setPant('espera'); // directo a espera/juego
+        else setPant(rol===0?'setup-online':'espera');
       }}
       onBack={()=>setPant('menu')}/>
   );
@@ -1242,6 +1384,10 @@ export default function App(){
   );
   if(pant==='espera'&&data) return(
     <Espera codigo={data.codigo} miRol={data.miRol} onBack={()=>setPant('menu')}/>
+  );
+
+  if(pant==='mis-partidas') return(
+    <MisPartidas perfil={perfil} onBack={()=>setPant('menu')}/>
   );
 
   // ── MENÚ PRINCIPAL ──
@@ -1275,10 +1421,16 @@ export default function App(){
         </button>
 
         {user&&perfil?(
-          <button onClick={()=>setPant('lobby')}
-            style={{padding:'14px 20px',background:'rgba(233,69,96,0.15)',border:'1px solid rgba(233,69,96,0.4)',borderRadius:10,color:'#e94560',fontSize:15,fontWeight:600,cursor:'pointer',fontFamily:'inherit',textAlign:'center'}}>
-            🌐 Online — dispositivos distintos
-          </button>
+          <>
+            <button onClick={()=>setPant('lobby')}
+              style={{padding:'14px 20px',background:'rgba(233,69,96,0.15)',border:'1px solid rgba(233,69,96,0.4)',borderRadius:10,color:'#e94560',fontSize:15,fontWeight:600,cursor:'pointer',fontFamily:'inherit',textAlign:'center'}}>
+              🌐 Online — dispositivos distintos
+            </button>
+            <button onClick={()=>setPant('mis-partidas')}
+              style={{padding:'12px 20px',background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:10,color:'#8892a4',fontSize:14,fontWeight:600,cursor:'pointer',fontFamily:'inherit',textAlign:'center'}}>
+              📋 Mis partidas
+            </button>
+          </>
         ):(
           <button onClick={loginConGoogle}
             style={{padding:'14px 20px',background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.15)',borderRadius:10,color:'#eaeaea',fontSize:15,fontWeight:600,cursor:'pointer',fontFamily:'inherit',textAlign:'center',display:'flex',alignItems:'center',justifyContent:'center',gap:10}}>
